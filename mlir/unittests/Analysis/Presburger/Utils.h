@@ -17,17 +17,32 @@
 #include "mlir/Analysis/Presburger/PWMAFunction.h"
 #include "mlir/Analysis/Presburger/PresburgerRelation.h"
 #include "mlir/Analysis/Presburger/Simplex.h"
+#include "mlir/Analysis/Presburger/Matrix.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/LLVM.h"
 
 #include <gtest/gtest.h>
+#include <optional>
 
 namespace mlir {
 namespace presburger {
 
-inline Matrix makeMatrix(unsigned numRow, unsigned numColumns,
-                         ArrayRef<SmallVector<int64_t, 8>> matrix) {
-  Matrix results(numRow, numColumns);
+inline IntMatrix makeIntMatrix(unsigned numRow, unsigned numColumns,
+                         ArrayRef<SmallVector<int, 8>> matrix) {
+  IntMatrix results(numRow, numColumns);
+  assert(matrix.size() == numRow);
+  for (unsigned i = 0; i < numRow; ++i) {
+    assert(matrix[i].size() == numColumns &&
+           "Output expression has incorrect dimensionality!");
+    for (unsigned j = 0; j < numColumns; ++j)
+      results(i, j) = MPInt(matrix[i][j]);
+  }
+  return results;
+}
+
+inline Matrix<Fraction> makeFracMatrix(unsigned numRow, unsigned numColumns,
+                         ArrayRef<SmallVector<Fraction, 8>> matrix) {
+  Matrix<Fraction> results(numRow, numColumns);
   assert(matrix.size() == numRow);
   for (unsigned i = 0; i < numRow; ++i) {
     assert(matrix[i].size() == numColumns &&
@@ -40,7 +55,8 @@ inline Matrix makeMatrix(unsigned numRow, unsigned numColumns,
 
 /// lhs and rhs represent non-negative integers or positive infinity. The
 /// infinity case corresponds to when the Optional is empty.
-inline bool infinityOrUInt64LE(Optional<MPInt> lhs, Optional<MPInt> rhs) {
+inline bool infinityOrUInt64LE(std::optional<MPInt> lhs,
+                               std::optional<MPInt> rhs) {
   // No constraint.
   if (!rhs)
     return true;
@@ -53,23 +69,22 @@ inline bool infinityOrUInt64LE(Optional<MPInt> lhs, Optional<MPInt> rhs) {
 /// Expect that the computed volume is a valid overapproximation of
 /// the true volume `trueVolume`, while also being at least as good an
 /// approximation as `resultBound`.
-inline void
-expectComputedVolumeIsValidOverapprox(const Optional<MPInt> &computedVolume,
-                                      const Optional<MPInt> &trueVolume,
-                                      const Optional<MPInt> &resultBound) {
+inline void expectComputedVolumeIsValidOverapprox(
+    const std::optional<MPInt> &computedVolume,
+    const std::optional<MPInt> &trueVolume,
+    const std::optional<MPInt> &resultBound) {
   assert(infinityOrUInt64LE(trueVolume, resultBound) &&
          "can't expect result to be less than the true volume");
   EXPECT_TRUE(infinityOrUInt64LE(trueVolume, computedVolume));
   EXPECT_TRUE(infinityOrUInt64LE(computedVolume, resultBound));
 }
 
-inline void
-expectComputedVolumeIsValidOverapprox(const Optional<MPInt> &computedVolume,
-                                      Optional<int64_t> trueVolume,
-                                      Optional<int64_t> resultBound) {
-  expectComputedVolumeIsValidOverapprox(computedVolume,
-                                        trueVolume.transform(mpintFromInt64),
-                                        resultBound.transform(mpintFromInt64));
+inline void expectComputedVolumeIsValidOverapprox(
+    const std::optional<MPInt> &computedVolume,
+    std::optional<int64_t> trueVolume, std::optional<int64_t> resultBound) {
+  expectComputedVolumeIsValidOverapprox(
+      computedVolume, llvm::transformOptional(trueVolume, mpintFromInt64),
+      llvm::transformOptional(resultBound, mpintFromInt64));
 }
 
 } // namespace presburger

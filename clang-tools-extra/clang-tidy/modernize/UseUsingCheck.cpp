@@ -12,9 +12,7 @@
 
 using namespace clang::ast_matchers;
 
-namespace clang {
-namespace tidy {
-namespace modernize {
+namespace clang::tidy::modernize {
 
 static constexpr llvm::StringLiteral ParentDeclName = "parent-decl";
 static constexpr llvm::StringLiteral TagDeclName = "tag-decl";
@@ -122,8 +120,10 @@ void UseUsingCheck::check(const MatchFinder::MatchResult &Result) {
         Type.substr(0, FirstTypedefType.size()) == FirstTypedefType)
       Type = FirstTypedefName + Type.substr(FirstTypedefType.size() + 1);
   }
-  if (!ReplaceRange.getEnd().isMacroID())
-    LastReplacementEnd = ReplaceRange.getEnd().getLocWithOffset(Name.size());
+  if (!ReplaceRange.getEnd().isMacroID()) {
+    const SourceLocation::IntTy Offset = MatchedDecl->getFunctionType() ? 0 : Name.size();
+    LastReplacementEnd = ReplaceRange.getEnd().getLocWithOffset(Offset);
+  }
 
   auto Diag = diag(ReplaceRange.getBegin(), UseUsingWarning);
 
@@ -142,6 +142,4 @@ void UseUsingCheck::check(const MatchFinder::MatchResult &Result) {
   std::string Replacement = Using + Name + " = " + Type;
   Diag << FixItHint::CreateReplacement(ReplaceRange, Replacement);
 }
-} // namespace modernize
-} // namespace tidy
-} // namespace clang
+} // namespace clang::tidy::modernize

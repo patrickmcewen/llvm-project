@@ -20,6 +20,7 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Transforms/InstCombine/InstCombiner.h"
 #include "llvm/Transforms/Utils/Local.h"
+#include <optional>
 
 using namespace llvm;
 using namespace llvm::PatternMatch;
@@ -247,7 +248,7 @@ bool InstCombinerImpl::foldIntegerTypedPHI(PHINode &PN) {
   PHINode *NewPtrPHI = PHINode::Create(
       IntToPtr->getType(), PN.getNumIncomingValues(), PN.getName() + ".ptr");
 
-  InsertNewInstBefore(NewPtrPHI, PN);
+  InsertNewInstBefore(NewPtrPHI, PN.getIterator());
   SmallDenseMap<Value *, Instruction *> Casts;
   for (auto Incoming : zip(PN.blocks(), AvailablePtrVals)) {
     auto *IncomingBB = std::get<0>(Incoming);
@@ -284,10 +285,10 @@ bool InstCombinerImpl::foldIntegerTypedPHI(PHINode &PN) {
         if (isa<PHINode>(IncomingI))
           InsertPos = BB->getFirstInsertionPt();
         assert(InsertPos != BB->end() && "should have checked above");
-        InsertNewInstBefore(CI, *InsertPos);
+        InsertNewInstBefore(CI, InsertPos);
       } else {
         auto *InsertBB = &IncomingBB->getParent()->getEntryBlock();
-        InsertNewInstBefore(CI, *InsertBB->getFirstInsertionPt());
+        InsertNewInstBefore(CI, InsertBB->getFirstInsertionPt());
       }
     }
     NewPtrPHI->addIncoming(CI, IncomingBB);
@@ -315,7 +316,7 @@ Instruction *InstCombinerImpl::foldPHIArgIntToPtrToPHI(PHINode &PN) {
   for (unsigned OpNum = 0; OpNum != PN.getNumIncomingValues(); ++OpNum) {
     if (auto *NewOp =
             simplifyIntToPtrRoundTripCast(PN.getIncomingValue(OpNum))) {
-      PN.setIncomingValue(OpNum, NewOp);
+      replaceOperand(PN, OpNum, NewOp);
       OperandWithRoundTripCast = true;
     }
   }
@@ -352,7 +353,7 @@ InstCombinerImpl::foldPHIArgInsertValueInstructionIntoPHI(PHINode &PN) {
       NewOperand->addIncoming(
           cast<InsertValueInst>(std::get<1>(Incoming))->getOperand(OpIdx),
           std::get<0>(Incoming));
-    InsertNewInstBefore(NewOperand, PN);
+    InsertNewInstBefore(NewOperand, PN.getIterator());
   }
 
   // And finally, create `insertvalue` over the newly-formed PHI nodes.
@@ -390,7 +391,7 @@ InstCombinerImpl::foldPHIArgExtractValueInstructionIntoPHI(PHINode &PN) {
     NewAggregateOperand->addIncoming(
         cast<ExtractValueInst>(std::get<1>(Incoming))->getAggregateOperand(),
         std::get<0>(Incoming));
-  InsertNewInstBefore(NewAggregateOperand, PN);
+  InsertNewInstBefore(NewAggregateOperand, PN.getIterator());
 
   // And finally, create `extractvalue` over the newly-formed PHI nodes.
   auto *NewEVI = ExtractValueInst::Create(NewAggregateOperand,
@@ -449,7 +450,7 @@ Instruction *InstCombinerImpl::foldPHIArgBinOpIntoPHI(PHINode &PN) {
     NewLHS = PHINode::Create(LHSType, PN.getNumIncomingValues(),
                              FirstInst->getOperand(0)->getName() + ".pn");
     NewLHS->addIncoming(InLHS, PN.getIncomingBlock(0));
-    InsertNewInstBefore(NewLHS, PN);
+    InsertNewInstBefore(NewLHS, PN.getIterator());
     LHSVal = NewLHS;
   }
 
@@ -457,7 +458,7 @@ Instruction *InstCombinerImpl::foldPHIArgBinOpIntoPHI(PHINode &PN) {
     NewRHS = PHINode::Create(RHSType, PN.getNumIncomingValues(),
                              FirstInst->getOperand(1)->getName() + ".pn");
     NewRHS->addIncoming(InRHS, PN.getIncomingBlock(0));
-    InsertNewInstBefore(NewRHS, PN);
+    InsertNewInstBefore(NewRHS, PN.getIterator());
     RHSVal = NewRHS;
   }
 
@@ -580,7 +581,7 @@ Instruction *InstCombinerImpl::foldPHIArgGEPIntoPHI(PHINode &PN) {
     Value *FirstOp = FirstInst->getOperand(I);
     PHINode *NewPN =
         PHINode::Create(FirstOp->getType(), E, FirstOp->getName() + ".pn");
-    InsertNewInstBefore(NewPN, PN);
+    InsertNewInstBefore(NewPN, PN.getIterator());
 
     NewPN->addIncoming(FirstOp, PN.getIncomingBlock(0));
     OperandPhis[I] = NewPN;
@@ -604,7 +605,7 @@ Instruction *InstCombinerImpl::foldPHIArgGEPIntoPHI(PHINode &PN) {
   Value *Base = FixedOperands[0];
   GetElementPtrInst *NewGEP =
       GetElementPtrInst::Create(FirstInst->getSourceElementType(), Base,
-                                makeArrayRef(FixedOperands).slice(1));
+                                ArrayRef(FixedOperands).slice(1));
   if (AllInBounds) NewGEP->setIsInBounds();
   PHIArgMergedDebugLoc(NewGEP, PN);
   return NewGEP;
@@ -744,6 +745,7 @@ Instruction *InstCombinerImpl::foldPHIArgLoadIntoPHI(PHINode &PN) {
     LLVMContext::MD_dereferenceable,
     LLVMContext::MD_dereferenceable_or_null,
     LLVMContext::MD_access_group,
+    LLVMContext::MD_noundef,
   };
 
   for (unsigned ID : KnownIDs)
@@ -767,7 +769,7 @@ Instruction *InstCombinerImpl::foldPHIArgLoadIntoPHI(PHINode &PN) {
     NewLI->setOperand(0, InVal);
     delete NewPN;
   } else {
-    InsertNewInstBefore(NewPN, PN);
+    InsertNewInstBefore(NewPN, PN.getIterator());
   }
 
   // If this was a volatile load that we are merging, make sure to loop through
@@ -851,7 +853,7 @@ Instruction *InstCombinerImpl::foldPHIArgZextsIntoPHI(PHINode &Phi) {
   for (unsigned I = 0; I != NumIncomingValues; ++I)
     NewPhi->addIncoming(NewIncoming[I], Phi.getIncomingBlock(I));
 
-  InsertNewInstBefore(NewPhi, Phi);
+  InsertNewInstBefore(NewPhi, Phi.getIterator());
   return CastInst::CreateZExtOrBitCast(NewPhi, Phi.getType());
 }
 
@@ -941,7 +943,7 @@ Instruction *InstCombinerImpl::foldPHIArgOpIntoPHI(PHINode &PN) {
     PhiVal = InVal;
     delete NewPN;
   } else {
-    InsertNewInstBefore(NewPN, PN);
+    InsertNewInstBefore(NewPN, PN.getIterator());
     PhiVal = NewPN;
   }
 
@@ -1328,7 +1330,7 @@ static Value *simplifyUsingControlFlow(InstCombiner &Self, PHINode &PN,
 
   // Check that edges outgoing from the idom's terminators dominate respective
   // inputs of the Phi.
-  Optional<bool> Invert;
+  std::optional<bool> Invert;
   for (auto Pair : zip(PN.incoming_values(), PN.blocks())) {
     auto *Input = cast<ConstantInt>(std::get<0>(Pair));
     BasicBlock *Pred = std::get<1>(Pair);
@@ -1366,7 +1368,7 @@ static Value *simplifyUsingControlFlow(InstCombiner &Self, PHINode &PN,
   // sinking.
   auto InsertPt = BB->getFirstInsertionPt();
   if (InsertPt != BB->end()) {
-    Self.Builder.SetInsertPoint(&*InsertPt);
+    Self.Builder.SetInsertPoint(&*BB, InsertPt);
     return Self.Builder.CreateNot(Cond);
   }
 
@@ -1387,11 +1389,10 @@ Instruction *InstCombinerImpl::visitPHINode(PHINode &PN) {
 
   // If all PHI operands are the same operation, pull them through the PHI,
   // reducing code size.
-  if (isa<Instruction>(PN.getIncomingValue(0)) &&
-      isa<Instruction>(PN.getIncomingValue(1)) &&
-      cast<Instruction>(PN.getIncomingValue(0))->getOpcode() ==
-          cast<Instruction>(PN.getIncomingValue(1))->getOpcode() &&
-      PN.getIncomingValue(0)->hasOneUser())
+  auto *Inst0 = dyn_cast<Instruction>(PN.getIncomingValue(0));
+  auto *Inst1 = dyn_cast<Instruction>(PN.getIncomingValue(1));
+  if (Inst0 && Inst1 && Inst0->getOpcode() == Inst1->getOpcode() &&
+      Inst0->hasOneUser())
     if (Instruction *Result = foldPHIArgOpIntoPHI(PN))
       return Result;
 
@@ -1511,11 +1512,12 @@ Instruction *InstCombinerImpl::visitPHINode(PHINode &PN) {
   // the blocks in the same order. This will help identical PHIs be eliminated
   // by other passes. Other passes shouldn't depend on this for correctness
   // however.
-  PHINode *FirstPN = cast<PHINode>(PN.getParent()->begin());
-  if (&PN != FirstPN)
-    for (unsigned I = 0, E = FirstPN->getNumIncomingValues(); I != E; ++I) {
+  auto Res = PredOrder.try_emplace(PN.getParent());
+  if (!Res.second) {
+    const auto &Preds = Res.first->second;
+    for (unsigned I = 0, E = PN.getNumIncomingValues(); I != E; ++I) {
       BasicBlock *BBA = PN.getIncomingBlock(I);
-      BasicBlock *BBB = FirstPN->getIncomingBlock(I);
+      BasicBlock *BBB = Preds[I];
       if (BBA != BBB) {
         Value *VA = PN.getIncomingValue(I);
         unsigned J = PN.getBasicBlockIndex(BBB);
@@ -1530,6 +1532,10 @@ Instruction *InstCombinerImpl::visitPHINode(PHINode &PN) {
         // this in this case.
       }
     }
+  } else {
+    // Remember the block order of the first encountered phi node.
+    append_range(Res.first->second, PN.blocks());
+  }
 
   // Is there an identical PHI node in this basic block?
   for (PHINode &IdenticalPN : PN.getParent()->phis()) {

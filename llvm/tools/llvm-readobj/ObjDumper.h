@@ -13,7 +13,6 @@
 #include <memory>
 #include <system_error>
 
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
@@ -78,21 +77,23 @@ public:
   virtual void printFileHeaders() = 0;
   virtual void printSectionHeaders() = 0;
   virtual void printRelocations() = 0;
-  virtual void printSymbols(bool PrintSymbols, bool PrintDynamicSymbols) {
+  virtual void printSymbols(bool PrintSymbols, bool PrintDynamicSymbols,
+                            bool ExtraSymInfo) {
     if (PrintSymbols)
-      printSymbols();
+      printSymbols(ExtraSymInfo);
     if (PrintDynamicSymbols)
       printDynamicSymbols();
   }
   virtual void printSymbols(bool PrintSymbols, bool PrintDynamicSymbols,
-                            llvm::Optional<SymbolComparator> SymComp) {
+                            bool ExtraSymInfo,
+                            std::optional<SymbolComparator> SymComp) {
     if (SymComp) {
       if (PrintSymbols)
         printSymbols(SymComp);
       if (PrintDynamicSymbols)
         printDynamicSymbols(SymComp);
     } else {
-      printSymbols(PrintSymbols, PrintDynamicSymbols);
+      printSymbols(PrintSymbols, PrintDynamicSymbols, ExtraSymInfo);
     }
   }
   virtual void printProgramHeaders(bool PrintProgramHeaders,
@@ -137,6 +138,7 @@ public:
   virtual void printStackSizes() {}
   virtual void printSectionDetails() {}
   virtual void printArchSpecificInfo() {}
+  virtual void printMemtag() {}
 
   // Only implemented for PE/COFF.
   virtual void printCOFFImports() { }
@@ -155,9 +157,12 @@ public:
                      llvm::codeview::GlobalTypeTableBuilder &GlobalCVTypes,
                      bool GHash) {}
 
-  // Only implement for XCOFF
+  // Only implemented for XCOFF.
+  virtual void printStringTable() {}
   virtual void printAuxiliaryHeader() {}
   virtual void printExceptionSection() {}
+  virtual void printLoaderSection(bool PrintHeader, bool PrintSymbols,
+                                  bool PrintRelocations) {}
 
   // Only implemented for MachO.
   virtual void printMachODataInCode() { }
@@ -166,9 +171,6 @@ public:
   virtual void printMachOSegment() { }
   virtual void printMachOIndirectSymbols() { }
   virtual void printMachOLinkerOptions() { }
-
-  // Currently only implemented for XCOFF.
-  virtual void printStringTable() { }
 
   virtual void printStackMap() const = 0;
 
@@ -187,10 +189,10 @@ protected:
   ScopedPrinter &W;
 
 private:
-  virtual void printSymbols() {}
-  virtual void printSymbols(llvm::Optional<SymbolComparator> Comp) {}
+  virtual void printSymbols(bool ExtraSymInfo) {}
+  virtual void printSymbols(std::optional<SymbolComparator> Comp) {}
   virtual void printDynamicSymbols() {}
-  virtual void printDynamicSymbols(llvm::Optional<SymbolComparator> Comp) {}
+  virtual void printDynamicSymbols(std::optional<SymbolComparator> Comp) {}
   virtual void printProgramHeaders() {}
   virtual void printSectionMapping() {}
 

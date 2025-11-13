@@ -1,14 +1,14 @@
 // RUN: %clang_cc1 -fopenmp -x c++ -triple powerpc64le-unknown-unknown -fopenmp-targets=nvptx64-nvidia-cuda -emit-llvm %s -o - | FileCheck %s --check-prefix HOST --check-prefix CHECK
 // RUN: %clang_cc1 -fopenmp -x c++ -triple powerpc64le-unknown-unknown -fopenmp-targets=nvptx64-nvidia-cuda -emit-llvm-bc %s -o %t-ppc-host.bc
-// RUN: %clang_cc1 -fopenmp -x c++ -triple nvptx64-nvidia-cuda -fopenmp-targets=nvptx64-nvidia-cuda -emit-llvm %s -fopenmp-is-device -fvisibility=protected -fopenmp-host-ir-file-path %t-ppc-host.bc -o - | FileCheck %s --check-prefix DEVICE --check-prefix CHECK
-// RUN: %clang_cc1 -fopenmp -x c++ -triple nvptx64-nvidia-cuda -fopenmp-targets=nvptx64-nvidia-cuda -emit-llvm %s -fopenmp-is-device -fvisibility=protected -fopenmp-host-ir-file-path %t-ppc-host.bc -emit-pch -o %t
-// RUN: %clang_cc1 -fopenmp -x c++ -triple nvptx64-nvidia-cuda -fopenmp-targets=nvptx64-nvidia-cuda -emit-llvm %s -fopenmp-is-device -fvisibility=protected -fopenmp-host-ir-file-path %t-ppc-host.bc -include-pch %t -o - | FileCheck %s --check-prefix DEVICE --check-prefix CHECK
+// RUN: %clang_cc1 -fopenmp -x c++ -triple nvptx64-nvidia-cuda -fopenmp-targets=nvptx64-nvidia-cuda -emit-llvm %s -fopenmp-is-target-device -fvisibility=protected -fopenmp-host-ir-file-path %t-ppc-host.bc -o - | FileCheck %s --check-prefix DEVICE --check-prefix CHECK
+// RUN: %clang_cc1 -fopenmp -x c++ -triple nvptx64-nvidia-cuda -fopenmp-targets=nvptx64-nvidia-cuda -emit-llvm %s -fopenmp-is-target-device -fvisibility=protected -fopenmp-host-ir-file-path %t-ppc-host.bc -emit-pch -o %t
+// RUN: %clang_cc1 -fopenmp -x c++ -triple nvptx64-nvidia-cuda -fopenmp-targets=nvptx64-nvidia-cuda -emit-llvm %s -fopenmp-is-target-device -fvisibility=protected -fopenmp-host-ir-file-path %t-ppc-host.bc -include-pch %t -o - | FileCheck %s --check-prefix DEVICE --check-prefix CHECK
 
 // RUN: %clang_cc1 -fopenmp-simd -x c++ -triple powerpc64le-unknown-unknown -fopenmp-targets=nvptx64-nvidia-cuda -emit-llvm-bc %s -o - | FileCheck %s --check-prefix SIMD-ONLY
 // RUN: %clang_cc1 -fopenmp-simd -x c++ -triple powerpc64le-unknown-unknown -fopenmp-targets=nvptx64-nvidia-cuda -emit-llvm-bc %s -o %t-ppc-host.bc
-// RUN: %clang_cc1 -fopenmp-simd -x c++ -triple powerpc64le-unknown-unknown -fopenmp-targets=nvptx64-nvidia-cuda -emit-llvm %s -fopenmp-is-device -fvisibility=protected -fopenmp-host-ir-file-path %t-ppc-host.bc -o -| FileCheck %s --check-prefix SIMD-ONLY
-// RUN: %clang_cc1 -fopenmp-simd -x c++ -triple powerpc64le-unknown-unknown -fopenmp-targets=nvptx64-nvidia-cuda -emit-llvm %s -fopenmp-is-device -fvisibility=protected -fopenmp-host-ir-file-path %t-ppc-host.bc -emit-pch -o %t
-// RUN: %clang_cc1 -fopenmp-simd -x c++ -triple powerpc64le-unknown-unknown -fopenmp-targets=nvptx64-nvidia-cuda -emit-llvm %s -fopenmp-is-device -fvisibility=protected -fopenmp-host-ir-file-path %t-ppc-host.bc -include-pch %t -o - | FileCheck %s --check-prefix SIMD-ONLY
+// RUN: %clang_cc1 -fopenmp-simd -x c++ -triple powerpc64le-unknown-unknown -fopenmp-targets=nvptx64-nvidia-cuda -emit-llvm %s -fopenmp-is-target-device -fvisibility=protected -fopenmp-host-ir-file-path %t-ppc-host.bc -o -| FileCheck %s --check-prefix SIMD-ONLY
+// RUN: %clang_cc1 -fopenmp-simd -x c++ -triple powerpc64le-unknown-unknown -fopenmp-targets=nvptx64-nvidia-cuda -emit-llvm %s -fopenmp-is-target-device -fvisibility=protected -fopenmp-host-ir-file-path %t-ppc-host.bc -emit-pch -o %t
+// RUN: %clang_cc1 -fopenmp-simd -x c++ -triple powerpc64le-unknown-unknown -fopenmp-targets=nvptx64-nvidia-cuda -emit-llvm %s -fopenmp-is-target-device -fvisibility=protected -fopenmp-host-ir-file-path %t-ppc-host.bc -include-pch %t -o - | FileCheck %s --check-prefix SIMD-ONLY
 
 #ifndef HEADER
 #define HEADER
@@ -43,8 +43,8 @@ int caz() { return 0; }
 
 static int c = foo() + bar() + baz();
 #pragma omp declare target (c)
-// HOST-DAG: @[[C_CTOR:__omp_offloading__.+_c_l44_ctor]] = private constant i8 0
-// DEVICE-DAG: define weak_odr protected void [[C_CTOR:@__omp_offloading__.+_c_l44_ctor]]()
+// HOST-DAG: @[[C_CTOR:__omp_offloading_.+_c_l44_ctor]] = private constant i8 0
+// DEVICE-DAG: define weak_odr protected void [[C_CTOR:@__omp_offloading_.+_c_l44_ctor]]()
 // DEVICE-DAG: call noundef i32 [[FOO]]()
 // DEVICE-DAG: call noundef i32 [[BAR]]()
 // DEVICE-DAG: call noundef i32 [[BAZ]]()
@@ -60,15 +60,15 @@ struct S {
 #pragma omp declare target
 S cd = doo() + car() + caz() + baz();
 #pragma omp end declare target
-// HOST-DAG: @[[CD_CTOR:__omp_offloading__.+_cd_l61_ctor]] = private constant i8 0
-// DEVICE-DAG: define weak_odr protected void [[CD_CTOR:@__omp_offloading__.+_cd_l61_ctor]]()
+// HOST-DAG: @[[CD_CTOR:__omp_offloading_.+_cd_l61_ctor]] = private constant i8 0
+// DEVICE-DAG: define weak_odr protected void [[CD_CTOR:@__omp_offloading_.+_cd_l61_ctor]]()
 // DEVICE-DAG: call noundef i32 [[DOO]]()
 // DEVICE-DAG: call noundef i32 [[CAR]]()
 // DEVICE-DAG: call noundef i32 [[CAZ]]()
 // DEVICE-DAG: ret void
 
-// HOST-DAG: @[[CD_DTOR:__omp_offloading__.+_cd_l61_dtor]] = private constant i8 0
-// DEVICE-DAG: define weak_odr protected void [[CD_DTOR:@__omp_offloading__.+_cd_l61_dtor]]()
+// HOST-DAG: @[[CD_DTOR:__omp_offloading_.+_cd_l61_dtor]] = private constant i8 0
+// DEVICE-DAG: define weak_odr protected void [[CD_DTOR:@__omp_offloading_.+_cd_l61_dtor]]()
 // DEVICE-DAG: call void
 // DEVICE-DAG: ret void
 

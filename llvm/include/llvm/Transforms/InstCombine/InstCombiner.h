@@ -34,6 +34,7 @@ namespace llvm {
 
 class AAResults;
 class AssumptionCache;
+class OptimizationRemarkEmitter;
 class ProfileSummaryInfo;
 class TargetLibraryInfo;
 class TargetTransformInfo;
@@ -81,6 +82,12 @@ protected:
   LoopInfo *LI;
 
   bool MadeIRChange = false;
+
+  /// Edges that are known to never be taken.
+  SmallDenseSet<std::pair<BasicBlock *, BasicBlock *>, 8> DeadEdges;
+
+  /// Order of predecessors to canonicalize phi nodes towards.
+  SmallDenseMap<BasicBlock *, SmallVector<BasicBlock *>, 8> PredOrder;
 
 public:
   InstCombiner(InstructionWorklist &Worklist, BuilderTy &Builder,
@@ -208,7 +215,7 @@ public:
     return ConstantExpr::getSub(C, ConstantInt::get(C->getType(), 1));
   }
 
-  llvm::Optional<std::pair<
+  std::optional<std::pair<
       CmpInst::Predicate,
       Constant *>> static getFlippedStrictnessPredicateAndConstant(CmpInst::
                                                                        Predicate
@@ -273,9 +280,10 @@ public:
 
   /// Given i1 V, can every user of V be freely adapted if V is changed to !V ?
   /// InstCombine's freelyInvertAllUsersOf() must be kept in sync with this fn.
+  /// NOTE: for Instructions only!
   ///
   /// See also: isFreeToInvert()
-  static bool canFreelyInvertAllUsersOf(Value *V, Value *IgnoredUser) {
+  static bool canFreelyInvertAllUsersOf(Instruction *V, Value *IgnoredUser) {
     // Look at every user of V.
     for (Use &U : V->uses()) {
       if (U.getUser() == IgnoredUser)
@@ -378,12 +386,12 @@ public:
   LoopInfo *getLoopInfo() const { return LI; }
 
   // Call target specific combiners
-  Optional<Instruction *> targetInstCombineIntrinsic(IntrinsicInst &II);
-  Optional<Value *>
+  std::optional<Instruction *> targetInstCombineIntrinsic(IntrinsicInst &II);
+  std::optional<Value *>
   targetSimplifyDemandedUseBitsIntrinsic(IntrinsicInst &II, APInt DemandedMask,
                                          KnownBits &Known,
                                          bool &KnownBitsComputed);
-  Optional<Value *> targetSimplifyDemandedVectorEltsIntrinsic(
+  std::optional<Value *> targetSimplifyDemandedVectorEltsIntrinsic(
       IntrinsicInst &II, APInt DemandedElts, APInt &UndefElts,
       APInt &UndefElts2, APInt &UndefElts3,
       std::function<void(Instruction *, unsigned, APInt, APInt &)>
@@ -393,18 +401,17 @@ public:
   ///
   /// Also adds the new instruction to the worklist and returns \p New so that
   /// it is suitable for use as the return from the visitation patterns.
-  Instruction *InsertNewInstBefore(Instruction *New, Instruction &Old) {
+  Instruction *InsertNewInstBefore(Instruction *New, BasicBlock::iterator Old) {
     assert(New && !New->getParent() &&
            "New instruction already inserted into a basic block!");
-    BasicBlock *BB = Old.getParent();
-    BB->getInstList().insert(Old.getIterator(), New); // Insert inst
-    Worklist.push(New);
+    New->insertBefore(Old); // Insert inst
+    Worklist.add(New);
     return New;
   }
 
   /// Same as InsertNewInstBefore, but also sets the debug loc.
-  Instruction *InsertNewInstWith(Instruction *New, Instruction &Old) {
-    New->setDebugLoc(Old.getDebugLoc());
+  Instruction *InsertNewInstWith(Instruction *New, BasicBlock::iterator Old) {
+    New->setDebugLoc(Old->getDebugLoc());
     return InsertNewInstBefore(New, Old);
   }
 
@@ -417,8 +424,7 @@ public:
   Instruction *replaceInstUsesWith(Instruction &I, Value *V) {
     // If there are no uses to replace, then we return nullptr to indicate that
     // no changes were made to the program.
-    if (I.use_empty())
-      return nullptr;
+    if (I.use_empty()) return nullptr;
 
     Worklist.pushUsersToWorkList(I); // Add all modified instrs to worklist.
 
@@ -430,21 +436,27 @@ public:
     LLVM_DEBUG(dbgs() << "IC: Replacing " << I << "\n"
                       << "    with " << *V << '\n');
 
+    // If V is a new unnamed instruction, take the name from the old one.
+    if (V->use_empty() && isa<Instruction>(V) && !V->hasName() && I.hasName())
+      V->takeName(&I);
+
     I.replaceAllUsesWith(V);
     return &I;
   }
 
   /// Replace operand of instruction and add old operand to the worklist.
   Instruction *replaceOperand(Instruction &I, unsigned OpNum, Value *V) {
-    Worklist.addValue(I.getOperand(OpNum));
+    Value *OldOp = I.getOperand(OpNum);
     I.setOperand(OpNum, V);
+    Worklist.handleUseCountDecrement(OldOp);
     return &I;
   }
 
   /// Replace use and add the previously used value to the worklist.
   void replaceUse(Use &U, Value *NewValue) {
-    Worklist.addValue(U);
+    Value *OldOp = U;
     U = NewValue;
+    Worklist.handleUseCountDecrement(OldOp);
   }
 
   /// Combiner aware instruction erasure.
@@ -525,6 +537,8 @@ public:
   SimplifyDemandedVectorElts(Value *V, APInt DemandedElts, APInt &UndefElts,
                              unsigned Depth = 0,
                              bool AllowMultipleUsers = false) = 0;
+
+  bool isValidAddrSpaceCast(unsigned FromAS, unsigned ToAS) const;
 };
 
 } // namespace llvm

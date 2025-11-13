@@ -194,8 +194,8 @@ class Dwarf5AccelTableWriter : public AccelTableWriter {
     uint32_t CompUnitCount;
     uint32_t LocalTypeUnitCount = 0;
     uint32_t ForeignTypeUnitCount = 0;
-    uint32_t BucketCount;
-    uint32_t NameCount;
+    uint32_t BucketCount = 0;
+    uint32_t NameCount = 0;
     uint32_t AbbrevTableSize = 0;
     uint32_t AugmentationStringSize = sizeof(AugmentationString);
     char AugmentationString[8] = {'L', 'L', 'V', 'M', '0', '7', '0', '0'};
@@ -213,7 +213,7 @@ class Dwarf5AccelTableWriter : public AccelTableWriter {
 
   Header Header;
   DenseMap<uint32_t, SmallVector<AttributeEncoding, 2>> Abbreviations;
-  ArrayRef<MCSymbol *> CompUnits;
+  ArrayRef<std::variant<MCSymbol *, uint64_t>> CompUnits;
   llvm::function_ref<unsigned(const DataT &)> getCUIndexForEntry;
   MCSymbol *ContributionEnd = nullptr;
   MCSymbol *AbbrevStart = Asm->createTempSymbol("names_abbrev_start");
@@ -235,7 +235,7 @@ class Dwarf5AccelTableWriter : public AccelTableWriter {
 public:
   Dwarf5AccelTableWriter(
       AsmPrinter *Asm, const AccelTableBase &Contents,
-      ArrayRef<MCSymbol *> CompUnits,
+      ArrayRef<std::variant<MCSymbol *, uint64_t>> CompUnits,
       llvm::function_ref<unsigned(const DataT &)> GetCUIndexForEntry);
 
   void emit();
@@ -419,7 +419,10 @@ template <typename DataT>
 void Dwarf5AccelTableWriter<DataT>::emitCUList() const {
   for (const auto &CU : enumerate(CompUnits)) {
     Asm->OutStreamer->AddComment("Compilation unit " + Twine(CU.index()));
-    Asm->emitDwarfSymbolReference(CU.value());
+    if (std::holds_alternative<MCSymbol *>(CU.value()))
+      Asm->emitDwarfSymbolReference(std::get<MCSymbol *>(CU.value()));
+    else
+      Asm->emitDwarfLengthOrOffset(std::get<uint64_t>(CU.value()));
   }
 }
 
@@ -508,7 +511,7 @@ template <typename DataT> void Dwarf5AccelTableWriter<DataT>::emitData() const {
 template <typename DataT>
 Dwarf5AccelTableWriter<DataT>::Dwarf5AccelTableWriter(
     AsmPrinter *Asm, const AccelTableBase &Contents,
-    ArrayRef<MCSymbol *> CompUnits,
+    ArrayRef<std::variant<MCSymbol *, uint64_t>> CompUnits,
     llvm::function_ref<unsigned(const DataT &)> getCUIndexForEntry)
     : AccelTableWriter(Asm, Contents, false),
       Header(CompUnits.size(), Contents.getBucketCount(),
@@ -531,7 +534,7 @@ template <typename DataT> void Dwarf5AccelTableWriter<DataT>::emit() {
   emitOffsets(EntryPool);
   emitAbbrevs();
   emitData();
-  Asm->OutStreamer->emitValueToAlignment(4, 0);
+  Asm->OutStreamer->emitValueToAlignment(Align(4), 0);
   Asm->OutStreamer->emitLabel(ContributionEnd);
 }
 
@@ -545,13 +548,17 @@ void llvm::emitAppleAccelTableImpl(AsmPrinter *Asm, AccelTableBase &Contents,
 void llvm::emitDWARF5AccelTable(
     AsmPrinter *Asm, AccelTable<DWARF5AccelTableData> &Contents,
     const DwarfDebug &DD, ArrayRef<std::unique_ptr<DwarfCompileUnit>> CUs) {
-  std::vector<MCSymbol *> CompUnits;
+  std::vector<std::variant<MCSymbol *, uint64_t>> CompUnits;
   SmallVector<unsigned, 1> CUIndex(CUs.size());
   int Count = 0;
   for (const auto &CU : enumerate(CUs)) {
-    if (CU.value()->getCUNode()->getNameTableKind() !=
-        DICompileUnit::DebugNameTableKind::Default)
+    switch (CU.value()->getCUNode()->getNameTableKind()) {
+    case DICompileUnit::DebugNameTableKind::Default:
+    case DICompileUnit::DebugNameTableKind::Apple:
+      break;
+    default:
       continue;
+    }
     CUIndex[CU.index()] = Count++;
     assert(CU.index() == CU.value()->getUniqueID());
     const DwarfCompileUnit *MainCU =
@@ -577,7 +584,7 @@ void llvm::emitDWARF5AccelTable(
 
 void llvm::emitDWARF5AccelTable(
     AsmPrinter *Asm, AccelTable<DWARF5AccelTableStaticData> &Contents,
-    ArrayRef<MCSymbol *> CUs,
+    ArrayRef<std::variant<MCSymbol *, uint64_t>> CUs,
     llvm::function_ref<unsigned(const DWARF5AccelTableStaticData &)>
         getCUIndexForEntry) {
   Contents.finalize(Asm, "names");
@@ -660,9 +667,9 @@ void AccelTableBase::HashData::print(raw_ostream &OS) const {
 void AccelTableBase::print(raw_ostream &OS) const {
   // Print Content.
   OS << "Entries: \n";
-  for (const auto &Entry : Entries) {
-    OS << "Name: " << Entry.first() << "\n";
-    for (auto *V : Entry.second.Values)
+  for (const auto &[Name, Data] : Entries) {
+    OS << "Name: " << Name << "\n";
+    for (auto *V : Data.Values)
       V->print(OS);
   }
 

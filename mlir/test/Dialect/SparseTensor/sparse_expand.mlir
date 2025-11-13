@@ -8,21 +8,19 @@
 // RUN:   FileCheck %s --check-prefix=CHECK-CONVERT
 
 #CSR = #sparse_tensor.encoding<{
-  dimLevelType = [  "dense", "compressed" ]
+  map = (d0, d1) -> (d0 : dense, d1 : compressed)
 }>
 
 #CSC = #sparse_tensor.encoding<{
-  dimLevelType = [  "dense", "compressed" ],
-  dimOrdering = affine_map<(i,j) -> (j,i)>
+  map = (d0, d1) -> (d1 : dense, d0 : compressed)
 }>
 
 #DCSC = #sparse_tensor.encoding<{
-  dimLevelType = [  "compressed", "compressed" ],
-  dimOrdering = affine_map<(i,j) -> (j,i)>
+  map = (d0, d1) -> (d1 : compressed, d0 : compressed),
 }>
 
 #SV = #sparse_tensor.encoding<{
-  dimLevelType = [  "compressed" ]
+  map = (d0) -> (d0 : compressed)
 }>
 
 #rowsum = {
@@ -46,10 +44,11 @@
 // CHECK-SPARSE: return %[[RET]]
 //
 // CHECK-CONVERT-LABEL: func @kernel(
-// CHECK-CONVERT: %[[C:.*]] = arith.constant 0 : index
-// CHECK-CONVERT: %{{.*}} = call @sparseDimSize
-// CHECK-CONVERT: %[[N:.*]] = call @newSparseTensor
-// CHECK-CONVERT: %[[S:.*]] = call @sparseDimSize(%[[N]], %[[C]])
+// CHECK-CONVERT-SAME: %[[A:.*]]: !llvm.ptr<i8>) -> !llvm.ptr<i8>
+// CHECK-CONVERT: %[[C0:.*]] = arith.constant 0 : index
+// CHECK-CONVERT: %[[N:.*]] = call @sparseDimSize(%[[A]], %[[C0]])
+// CHECK-CONVERT: %[[V:.*]] = call @newSparseTensor
+// CHECK-CONVERT: %[[S:.*]] = call @sparseLvlSize(%[[V]], %[[C0]])
 // CHECK-CONVERT: %[[A:.*]] = memref.alloc(%[[S]]) : memref<?xf64>
 // CHECK-CONVERT: %[[B:.*]] = memref.alloc(%[[S]]) : memref<?xi1>
 // CHECK-CONVERT: %[[C:.*]] = memref.alloc(%[[S]]) : memref<?xindex>
@@ -68,7 +67,7 @@
 func.func @kernel(%arga: tensor<?x?xf64, #DCSC>) -> tensor<?xf64, #SV> {
   %c0 = arith.constant 0 : index
   %n = tensor.dim %arga, %c0 : tensor<?x?xf64, #DCSC>
-  %v = bufferization.alloc_tensor(%n) : tensor<?xf64, #SV>
+  %v = tensor.empty(%n) : tensor<?xf64, #SV>
   %0 = linalg.generic #rowsum
     ins(%arga: tensor<?x?xf64, #DCSC>)
     outs(%v: tensor<?xf64, #SV>) {
@@ -84,7 +83,7 @@ func.func @kernel(%arga: tensor<?x?xf64, #DCSC>) -> tensor<?xf64, #SV> {
 // CHECK-SPARSE-DAG: %[[C0:.*]] = arith.constant 0 : index
 // CHECK-SPARSE-DAG: %[[C1:.*]] = arith.constant 1 : index
 // CHECK-SPARSE-DAG: %[[C8:.*]] = arith.constant 8 : index
-// CHECK-SPARSE: scf.for %{{.*}} = %[[C0]] to %[[C8]] step %[[C1]] {
+// CHECK-SPARSE: %[[T:.*]] = scf.for %{{.*}} = %[[C0]] to %[[C8]] step %[[C1]] {{.*}} {
 // CHECK-SPARSE:   %[[A:.*]], %[[B:.*]], %[[C:.*]], %{{.*}} = sparse_tensor.expand
 // CHECK-SPARSE:   %[[COUNT:.*]] = scf.for {{.*}} {
 // CHECK-SPARSE:     scf.for {{.*}} {
@@ -92,7 +91,7 @@ func.func @kernel(%arga: tensor<?x?xf64, #DCSC>) -> tensor<?xf64, #SV> {
 // CHECK-SPARSE:   }
 // CHECK-SPARSE:   sparse_tensor.compress %[[A]], %[[B]], %[[C]], %[[COUNT]] into
 // CHECK-SPARSE: }
-// CHECK-SPARSE: %[[RET:.*]] = sparse_tensor.load %{{.*}} hasInserts
+// CHECK-SPARSE: %[[RET:.*]] = sparse_tensor.load %[[T]] hasInserts
 // CHECK-SPARSE: return %[[RET]]
 //
 // CHECK-CONVERT-LABEL: func @matmul1(
@@ -106,7 +105,7 @@ func.func @kernel(%arga: tensor<?x?xf64, #DCSC>) -> tensor<?xf64, #SV> {
 // CHECK-CONVERT: %[[C:.*]] = memref.alloc(%[[C4]]) : memref<?xindex>
 // CHECK-CONVERT: linalg.fill ins(%{{.*}} : f64) outs(%[[A]] : memref<?xf64>)
 // CHECK-CONVERT: linalg.fill ins(%{{.*}} : i1) outs(%[[B]] : memref<?xi1>)
-// CHECK-CONVERT: scf.for %{{.*}} = %[[C0]] to %[[C8]] step %[[C1]] {
+// CHECK-CONVERT: scf.for %{{.*}} = %[[C0]] to %[[C8]] step %[[C1]] {{.*}} {
 // CHECK-CONVERT:   scf.for {{.*}} {
 // CHECK-CONVERT:     scf.for {{.*}} {
 // CHECK-CONVERT:     }
@@ -120,7 +119,7 @@ func.func @kernel(%arga: tensor<?x?xf64, #DCSC>) -> tensor<?xf64, #SV> {
 //
 func.func @matmul1(%A: tensor<8x2xf64, #CSR>,
                    %B: tensor<2x4xf64, #CSR>) -> tensor<8x4xf64, #CSR> {
-  %C = bufferization.alloc_tensor() : tensor<8x4xf64, #CSR>
+  %C = tensor.empty() : tensor<8x4xf64, #CSR>
   %D = linalg.matmul
     ins(%A, %B: tensor<8x2xf64, #CSR>, tensor<2x4xf64, #CSR>)
        outs(%C: tensor<8x4xf64, #CSR>) -> tensor<8x4xf64, #CSR>
@@ -132,7 +131,7 @@ func.func @matmul1(%A: tensor<8x2xf64, #CSR>,
 // CHECK-SPARSE-DAG: %[[C0:.*]] = arith.constant 0 : index
 // CHECK-SPARSE-DAG: %[[C1:.*]] = arith.constant 1 : index
 // CHECK-SPARSE-DAG: %[[C4:.*]] = arith.constant 4 : index
-// CHECK-SPARSE: scf.for %{{.*}} = %[[C0]] to %[[C4]] step %[[C1]] {
+// CHECK-SPARSE: %[[T:.*]] = scf.for %{{.*}} = %[[C0]] to %[[C4]] step %[[C1]] {{.*}} {
 // CHECK-SPARSE:   %[[A:.*]], %[[B:.*]], %[[C:.*]], %{{.*}} = sparse_tensor.expand
 // CHECK-SPARSE:   %[[COUNT:.*]] = scf.for {{.*}} {
 // CHECK-SPARSE:     scf.for {{.*}} {
@@ -140,7 +139,7 @@ func.func @matmul1(%A: tensor<8x2xf64, #CSR>,
 // CHECK-SPARSE:   }
 // CHECK-SPARSE:   sparse_tensor.compress %[[A]], %[[B]], %[[C]], %[[COUNT]]
 // CHECK-SPARSE: }
-// CHECK-SPARSE: %[[RET:.*]] = sparse_tensor.load %{{.*}} hasInserts
+// CHECK-SPARSE: %[[RET:.*]] = sparse_tensor.load %[[T]] hasInserts
 // CHECK-SPARSE: return %[[RET]]
 //
 // CHECK-CONVERT-LABEL: func @matmul2(
@@ -154,7 +153,7 @@ func.func @matmul1(%A: tensor<8x2xf64, #CSR>,
 // CHECK-CONVERT: %[[C:.*]] = memref.alloc(%[[C8]]) : memref<?xindex>
 // CHECK-CONVERT: linalg.fill ins(%{{.*}} : f64) outs(%[[A]] : memref<?xf64>)
 // CHECK-CONVERT: linalg.fill ins(%{{.*}} : i1) outs(%[[B]] : memref<?xi1>)
-// CHECK-CONVERT: scf.for %{{.*}} = %[[C0]] to %[[C4]] step %[[C1]] {
+// CHECK-CONVERT: scf.for %{{.*}} = %[[C0]] to %[[C4]] step %[[C1]] {{.*}} {
 // CHECK-CONVERT:   scf.for {{.*}} {
 // CHECK-CONVERT:     scf.for {{.*}} {
 // CHECK-CONVERT:     }
@@ -168,7 +167,7 @@ func.func @matmul1(%A: tensor<8x2xf64, #CSR>,
 //
 func.func @matmul2(%A: tensor<8x2xf64, #CSC>,
                    %B: tensor<2x4xf64, #CSC>) -> tensor<8x4xf64, #CSC> {
-  %C = bufferization.alloc_tensor() : tensor<8x4xf64, #CSC>
+  %C = tensor.empty() : tensor<8x4xf64, #CSC>
   %D = linalg.matmul
     ins(%A, %B: tensor<8x2xf64, #CSC>, tensor<2x4xf64, #CSC>)
        outs(%C: tensor<8x4xf64, #CSC>) -> tensor<8x4xf64, #CSC>

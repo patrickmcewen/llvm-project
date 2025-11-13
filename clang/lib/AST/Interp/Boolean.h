@@ -27,12 +27,10 @@ class Boolean final {
   /// Underlying boolean.
   bool V;
 
-  /// Construct a wrapper from a boolean.
-  explicit Boolean(bool V) : V(V) {}
-
  public:
   /// Zero-initializes a boolean.
   Boolean() : V(false) {}
+  explicit Boolean(bool V) : V(V) {}
 
   bool operator<(Boolean RHS) const { return V < RHS.V; }
   bool operator>(Boolean RHS) const { return V > RHS.V; }
@@ -66,7 +64,7 @@ class Boolean final {
 
   Boolean toUnsigned() const { return *this; }
 
-  constexpr static unsigned bitWidth() { return true; }
+  constexpr static unsigned bitWidth() { return 1; }
   bool isZero() const { return !V; }
   bool isMin() const { return isZero(); }
 
@@ -99,11 +97,6 @@ class Boolean final {
   template <unsigned SrcBits, bool SrcSign>
   static std::enable_if_t<SrcBits != 0, Boolean>
   from(Integral<SrcBits, SrcSign> Value) {
-    return Boolean(!Value.isZero());
-  }
-
-  template <bool SrcSign>
-  static Boolean from(Integral<0, SrcSign> Value) {
     return Boolean(!Value.isZero());
   }
 

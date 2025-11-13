@@ -6,12 +6,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_LIBC_SRC_SUPPORT_FPUTIL_X86_64_NEXT_AFTER_LONG_DOUBLE_H
-#define LLVM_LIBC_SRC_SUPPORT_FPUTIL_X86_64_NEXT_AFTER_LONG_DOUBLE_H
+#ifndef LLVM_LIBC_SRC___SUPPORT_FPUTIL_X86_64_NEXTAFTERLONGDOUBLE_H
+#define LLVM_LIBC_SRC___SUPPORT_FPUTIL_X86_64_NEXTAFTERLONGDOUBLE_H
 
-#include "src/__support/architectures.h"
+#include "src/__support/macros/properties/architectures.h"
 
-#if !defined(LLVM_LIBC_ARCH_X86)
+#if !defined(LIBC_TARGET_ARCH_IS_X86)
 #error "Invalid include"
 #endif
 
@@ -20,10 +20,10 @@
 
 #include <stdint.h>
 
-namespace __llvm_libc {
+namespace LIBC_NAMESPACE {
 namespace fputil {
 
-static inline long double nextafter(long double from, long double to) {
+LIBC_INLINE long double nextafter(long double from, long double to) {
   using FPBits = FPBits<long double>;
   FPBits from_bits(from);
   if (from_bits.is_nan())
@@ -117,6 +117,6 @@ static inline long double nextafter(long double from, long double to) {
 }
 
 } // namespace fputil
-} // namespace __llvm_libc
+} // namespace LIBC_NAMESPACE
 
-#endif // LLVM_LIBC_SRC_SUPPORT_FPUTIL_X86_64_NEXT_AFTER_LONG_DOUBLE_H
+#endif // LLVM_LIBC_SRC___SUPPORT_FPUTIL_X86_64_NEXTAFTERLONGDOUBLE_H

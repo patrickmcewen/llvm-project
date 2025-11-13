@@ -65,7 +65,8 @@ typedef _HiddenTypedef ExposedTypedefToHidden;
     {
       "kind": "memberOf",
       "source": "c:@S@ExposedRecord@FI@a",
-      "target": "c:@S@ExposedRecord"
+      "target": "c:@S@ExposedRecord",
+      "targetFallback": "ExposedRecord"
     }
   ],
   "symbols": [
@@ -84,6 +85,10 @@ typedef _HiddenTypedef ExposedTypedefToHidden;
         {
           "kind": "identifier",
           "spelling": "exposed_global"
+        },
+        {
+          "kind": "text",
+          "spelling": ";"
         }
       ],
       "identifier": {
@@ -134,6 +139,10 @@ typedef _HiddenTypedef ExposedTypedefToHidden;
         {
           "kind": "identifier",
           "spelling": "ExposedRecord"
+        },
+        {
+          "kind": "text",
+          "spelling": ";"
         }
       ],
       "identifier": {
@@ -185,6 +194,10 @@ typedef _HiddenTypedef ExposedTypedefToHidden;
         {
           "kind": "identifier",
           "spelling": "a"
+        },
+        {
+          "kind": "text",
+          "spelling": ";"
         }
       ],
       "identifier": {
@@ -295,6 +308,10 @@ typedef _HiddenTypedef ExposedTypedefToHidden;
         {
           "kind": "identifier",
           "spelling": "ExposedTypedef"
+        },
+        {
+          "kind": "text",
+          "spelling": ";"
         }
       ],
       "identifier": {
@@ -355,6 +372,10 @@ typedef _HiddenTypedef ExposedTypedefToHidden;
         {
           "kind": "identifier",
           "spelling": "ExposedTypedefToHidden"
+        },
+        {
+          "kind": "text",
+          "spelling": ";"
         }
       ],
       "identifier": {

@@ -6,8 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_LIBC_SRC_SUPPORT_FPUTIL_MANIPULATION_FUNCTIONS_H
-#define LLVM_LIBC_SRC_SUPPORT_FPUTIL_MANIPULATION_FUNCTIONS_H
+#ifndef LLVM_LIBC_SRC___SUPPORT_FPUTIL_MANIPULATIONFUNCTIONS_H
+#define LLVM_LIBC_SRC___SUPPORT_FPUTIL_MANIPULATIONFUNCTIONS_H
 
 #include "FPBits.h"
 #include "NearestIntegerOperations.h"
@@ -16,15 +16,17 @@
 
 #include "src/__support/CPP/bit.h"
 #include "src/__support/CPP/type_traits.h"
+#include "src/__support/macros/attributes.h"
+#include "src/__support/macros/optimization.h" // LIBC_UNLIKELY
 
 #include <limits.h>
 #include <math.h>
 
-namespace __llvm_libc {
+namespace LIBC_NAMESPACE {
 namespace fputil {
 
 template <typename T, cpp::enable_if_t<cpp::is_floating_point_v<T>, int> = 0>
-static inline T frexp(T x, int &exp) {
+LIBC_INLINE T frexp(T x, int &exp) {
   FPBits<T> bits(x);
   if (bits.is_inf_or_nan())
     return x;
@@ -40,7 +42,7 @@ static inline T frexp(T x, int &exp) {
 }
 
 template <typename T, cpp::enable_if_t<cpp::is_floating_point_v<T>, int> = 0>
-static inline T modf(T x, T &iptr) {
+LIBC_INLINE T modf(T x, T &iptr) {
   FPBits<T> bits(x);
   if (bits.is_zero() || bits.is_nan()) {
     iptr = x;
@@ -61,14 +63,14 @@ static inline T modf(T x, T &iptr) {
 }
 
 template <typename T, cpp::enable_if_t<cpp::is_floating_point_v<T>, int> = 0>
-static inline T copysign(T x, T y) {
+LIBC_INLINE T copysign(T x, T y) {
   FPBits<T> xbits(x);
   xbits.set_sign(FPBits<T>(y).get_sign());
   return T(xbits);
 }
 
 template <typename T, cpp::enable_if_t<cpp::is_floating_point_v<T>, int> = 0>
-static inline int ilogb(T x) {
+LIBC_INLINE int ilogb(T x) {
   // TODO: Raise appropriate floating point exceptions and set errno to the
   // an appropriate error value wherever relevant.
   FPBits<T> bits(x);
@@ -96,7 +98,7 @@ static inline int ilogb(T x) {
 }
 
 template <typename T, cpp::enable_if_t<cpp::is_floating_point_v<T>, int> = 0>
-static inline T logb(T x) {
+LIBC_INLINE T logb(T x) {
   FPBits<T> bits(x);
   if (bits.is_zero()) {
     // TODO(Floating point exception): Raise div-by-zero exception.
@@ -110,13 +112,15 @@ static inline T logb(T x) {
   }
 
   NormalFloat<T> normal(bits);
-  return normal.exponent;
+  return static_cast<T>(normal.exponent);
 }
 
 template <typename T, cpp::enable_if_t<cpp::is_floating_point_v<T>, int> = 0>
-static inline T ldexp(T x, int exp) {
+LIBC_INLINE T ldexp(T x, int exp) {
+  if (LIBC_UNLIKELY(exp == 0))
+    return x;
   FPBits<T> bits(x);
-  if (bits.is_zero() || bits.is_inf_or_nan() || exp == 0)
+  if (LIBC_UNLIKELY(bits.is_zero() || bits.is_inf_or_nan()))
     return x;
 
   // NormalFloat uses int32_t to store the true exponent value. We should ensure
@@ -140,7 +144,7 @@ static inline T ldexp(T x, int exp) {
 }
 
 template <typename T, cpp::enable_if_t<cpp::is_floating_point_v<T>, int> = 0>
-static inline T nextafter(T from, T to) {
+LIBC_INLINE T nextafter(T from, T to) {
   FPBits<T> from_bits(from);
   if (from_bits.is_nan())
     return from;
@@ -170,10 +174,10 @@ static inline T nextafter(T from, T to) {
 }
 
 } // namespace fputil
-} // namespace __llvm_libc
+} // namespace LIBC_NAMESPACE
 
 #ifdef SPECIAL_X86_LONG_DOUBLE
 #include "x86_64/NextAfterLongDouble.h"
 #endif // SPECIAL_X86_LONG_DOUBLE
 
-#endif // LLVM_LIBC_SRC_SUPPORT_FPUTIL_MANIPULATION_FUNCTIONS_H
+#endif // LLVM_LIBC_SRC___SUPPORT_FPUTIL_MANIPULATIONFUNCTIONS_H

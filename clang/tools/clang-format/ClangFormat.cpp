@@ -128,8 +128,7 @@ static cl::opt<std::string> QualifierAlignment(
 static cl::opt<std::string> Files(
     "files",
     cl::desc("A file containing a list of files to process, one per line."),
-    cl::value_desc("filename"),
-    cl::init(""), cl::cat(ClangFormatCategory));
+    cl::value_desc("filename"), cl::init(""), cl::cat(ClangFormatCategory));
 
 static cl::opt<bool>
     Verbose("verbose", cl::desc("If set, shows the list of processed files"),
@@ -201,7 +200,8 @@ static cl::opt<bool>
                           "whether or not to print diagnostics in color"),
                  cl::init(false), cl::cat(ClangFormatCategory), cl::Hidden);
 
-static cl::list<std::string> FileNames(cl::Positional, cl::desc("[<file> ...]"),
+static cl::list<std::string> FileNames(cl::Positional,
+                                       cl::desc("[@<file>] [<file> ...]"),
                                        cl::cat(ClangFormatCategory));
 
 namespace clang {

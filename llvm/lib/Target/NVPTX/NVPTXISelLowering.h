@@ -25,7 +25,7 @@ enum NodeType : unsigned {
   FIRST_NUMBER = ISD::BUILTIN_OP_END,
   Wrapper,
   CALL,
-  RET_FLAG,
+  RET_GLUE,
   LOAD_PARAM,
   DeclareParam,
   DeclareScalarParam,
@@ -461,6 +461,16 @@ public:
   Align getFunctionParamOptimizedAlign(const Function *F, Type *ArgTy,
                                        const DataLayout &DL) const;
 
+  /// Helper for computing alignment of a device function byval parameter.
+  Align getFunctionByValParamAlign(const Function *F, Type *ArgTy,
+                                   Align InitialAlign,
+                                   const DataLayout &DL) const;
+
+  // Helper for getting a function parameter name. Name is composed from
+  // its index and the function name. Negative index corresponds to special
+  // parameter (unsized array) used for passing variable arguments.
+  std::string getParamName(const Function *F, int Idx) const;
+
   /// isLegalAddressingMode - Return true if the addressing mode represented
   /// by AM is legal for this target, for a load/store of the specified type
   /// Used to guide target specific optimizations, like loop strength
@@ -499,17 +509,18 @@ public:
   SDValue LowerCall(CallLoweringInfo &CLI,
                     SmallVectorImpl<SDValue> &InVals) const override;
 
-  std::string getPrototype(const DataLayout &DL, Type *, const ArgListTy &,
-                           const SmallVectorImpl<ISD::OutputArg> &,
-                           MaybeAlign retAlignment, const CallBase &CB,
-                           unsigned UniqueCallSite) const;
+  std::string
+  getPrototype(const DataLayout &DL, Type *, const ArgListTy &,
+               const SmallVectorImpl<ISD::OutputArg> &, MaybeAlign retAlignment,
+               std::optional<std::pair<unsigned, const APInt &>> VAInfo,
+               const CallBase &CB, unsigned UniqueCallSite) const;
 
   SDValue LowerReturn(SDValue Chain, CallingConv::ID CallConv, bool isVarArg,
                       const SmallVectorImpl<ISD::OutputArg> &Outs,
                       const SmallVectorImpl<SDValue> &OutVals, const SDLoc &dl,
                       SelectionDAG &DAG) const override;
 
-  void LowerAsmOperandForConstraint(SDValue Op, std::string &Constraint,
+  void LowerAsmOperandForConstraint(SDValue Op, StringRef Constraint,
                                     std::vector<SDValue> &Ops,
                                     SelectionDAG &DAG) const override;
 
@@ -545,7 +556,7 @@ public:
 
   unsigned combineRepeatedFPDivisors() const override { return 2; }
 
-  bool allowFMA(MachineFunction &MF, CodeGenOpt::Level OptLevel) const;
+  bool allowFMA(MachineFunction &MF, CodeGenOptLevel OptLevel) const;
   bool allowUnsafeFPMath(MachineFunction &MF) const;
 
   bool isFMAFasterThanFMulAndFAdd(const MachineFunction &MF,
@@ -596,6 +607,9 @@ private:
 
   SDValue LowerSelect(SDValue Op, SelectionDAG &DAG) const;
 
+  SDValue LowerVAARG(SDValue Op, SelectionDAG &DAG) const;
+  SDValue LowerVASTART(SDValue Op, SelectionDAG &DAG) const;
+
   void ReplaceNodeResults(SDNode *N, SmallVectorImpl<SDValue> &Results,
                           SelectionDAG &DAG) const override;
   SDValue PerformDAGCombine(SDNode *N, DAGCombinerInfo &DCI) const override;
@@ -603,6 +617,7 @@ private:
   Align getArgumentAlignment(SDValue Callee, const CallBase *CB, Type *Ty,
                              unsigned Idx, const DataLayout &DL) const;
 };
+
 } // namespace llvm
 
 #endif

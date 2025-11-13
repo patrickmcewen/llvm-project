@@ -16,14 +16,15 @@
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
-#include "llvm/MC/SubtargetFeature.h"
 #include "llvm/MC/TargetRegistry.h"
 #include "llvm/Support/FileSystem.h"
-#include "llvm/Support/Host.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/CodeGenCWrappers.h"
 #include "llvm/Target/TargetMachine.h"
+#include "llvm/TargetParser/Host.h"
+#include "llvm/TargetParser/SubtargetFeature.h"
 #include <cstring>
+#include <optional>
 
 using namespace llvm;
 
@@ -99,7 +100,7 @@ LLVMTargetMachineRef LLVMCreateTargetMachine(LLVMTargetRef T,
         const char *Triple, const char *CPU, const char *Features,
         LLVMCodeGenOptLevel Level, LLVMRelocMode Reloc,
         LLVMCodeModel CodeModel) {
-  Optional<Reloc::Model> RM;
+  std::optional<Reloc::Model> RM;
   switch (Reloc){
     case LLVMRelocStatic:
       RM = Reloc::Static;
@@ -124,21 +125,21 @@ LLVMTargetMachineRef LLVMCreateTargetMachine(LLVMTargetRef T,
   }
 
   bool JIT;
-  Optional<CodeModel::Model> CM = unwrap(CodeModel, JIT);
+  std::optional<CodeModel::Model> CM = unwrap(CodeModel, JIT);
 
-  CodeGenOpt::Level OL;
+  CodeGenOptLevel OL;
   switch (Level) {
     case LLVMCodeGenLevelNone:
-      OL = CodeGenOpt::None;
+      OL = CodeGenOptLevel::None;
       break;
     case LLVMCodeGenLevelLess:
-      OL = CodeGenOpt::Less;
+      OL = CodeGenOptLevel::Less;
       break;
     case LLVMCodeGenLevelAggressive:
-      OL = CodeGenOpt::Aggressive;
+      OL = CodeGenOptLevel::Aggressive;
       break;
     default:
-      OL = CodeGenOpt::Default;
+      OL = CodeGenOptLevel::Default;
       break;
   }
 
@@ -194,10 +195,10 @@ static LLVMBool LLVMTargetMachineEmit(LLVMTargetMachineRef T, LLVMModuleRef M,
   CodeGenFileType ft;
   switch (codegen) {
     case LLVMAssemblyFile:
-      ft = CGFT_AssemblyFile;
+      ft = CodeGenFileType::AssemblyFile;
       break;
     default:
-      ft = CGFT_ObjectFile;
+      ft = CodeGenFileType::ObjectFile;
       break;
   }
   if (TM->addPassesToEmitFile(pass, OS, nullptr, ft)) {
@@ -257,8 +258,8 @@ char *LLVMGetHostCPUFeatures(void) {
   StringMap<bool> HostFeatures;
 
   if (sys::getHostCPUFeatures(HostFeatures))
-    for (auto &F : HostFeatures)
-      Features.AddFeature(F.first(), F.second);
+    for (const auto &[Feature, IsEnabled] : HostFeatures)
+      Features.AddFeature(Feature, IsEnabled);
 
   return strdup(Features.getString().c_str());
 }

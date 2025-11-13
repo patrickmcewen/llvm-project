@@ -17,9 +17,10 @@
 #include "clang/Basic/BitmaskEnum.h"
 #include "clang/Basic/TargetInfo.h"
 #include "clang/Basic/TargetOptions.h"
-#include "llvm/ADT/Triple.h"
 #include "llvm/Support/Compiler.h"
-#include "llvm/Support/X86TargetParser.h"
+#include "llvm/TargetParser/Triple.h"
+#include "llvm/TargetParser/X86TargetParser.h"
+#include <optional>
 
 namespace clang {
 namespace targets {
@@ -45,6 +46,9 @@ static const unsigned X86AddrSpaceMap[] = {
     271, // ptr32_uptr
     272, // ptr64
     0,   // hlsl_groupshared
+    // Wasm address space values for this target are dummy values,
+    // as it is only enabled for Wasm targets.
+    20, // wasm_funcref
 };
 
 // X86 target abstract base class; x86-32 and x86-64 are very close, so
@@ -91,6 +95,7 @@ class LLVM_LIBRARY_VISIBILITY X86TargetInfo : public TargetInfo {
   bool HasLWP = false;
   bool HasFMA = false;
   bool HasF16C = false;
+  bool HasEVEX512 = false;
   bool HasAVX512CD = false;
   bool HasAVX512VPOPCNTDQ = false;
   bool HasAVX512VNNI = false;
@@ -104,11 +109,15 @@ class LLVM_LIBRARY_VISIBILITY X86TargetInfo : public TargetInfo {
   bool HasAVX512VL = false;
   bool HasAVX512VBMI = false;
   bool HasAVX512VBMI2 = false;
+  bool HasAVXIFMA = false;
   bool HasAVX512IFMA = false;
   bool HasAVX512VP2INTERSECT = false;
   bool HasSHA = false;
+  bool HasSHA512 = false;
   bool HasSHSTK = false;
+  bool HasSM3 = false;
   bool HasSGX = false;
+  bool HasSM4 = false;
   bool HasCX8 = false;
   bool HasCX16 = false;
   bool HasFXSR = false;
@@ -137,7 +146,12 @@ class LLVM_LIBRARY_VISIBILITY X86TargetInfo : public TargetInfo {
   bool HasPTWRITE = false;
   bool HasINVPCID = false;
   bool HasENQCMD = false;
+  bool HasAVXVNNIINT16 = false;
   bool HasAMXFP16 = false;
+  bool HasCMPCCXADD = false;
+  bool HasRAOINT = false;
+  bool HasAVXVNNIINT8 = false;
+  bool HasAVXNECONVERT = false;
   bool HasKL = false;      // For key locker
   bool HasWIDEKL = false; // For wide key locker
   bool HasHRESET = false;
@@ -145,6 +159,7 @@ class LLVM_LIBRARY_VISIBILITY X86TargetInfo : public TargetInfo {
   bool HasAMXTILE = false;
   bool HasAMXINT8 = false;
   bool HasAMXBF16 = false;
+  bool HasAMXCOMPLEX = false;
   bool HasSERIALIZE = false;
   bool HasTSXLDTRK = false;
   bool HasUINTR = false;
@@ -187,7 +202,7 @@ public:
   ArrayRef<const char *> getGCCRegNames() const override;
 
   ArrayRef<TargetInfo::GCCRegAlias> getGCCRegAliases() const override {
-    return None;
+    return std::nullopt;
   }
 
   ArrayRef<TargetInfo::AddlRegName> getGCCAddlRegNames() const override;
@@ -196,9 +211,9 @@ public:
     return RegName.equals("esp") || RegName.equals("rsp");
   }
 
-  bool validateCpuSupports(StringRef Name) const override;
+  bool validateCpuSupports(StringRef FeatureStr) const override;
 
-  bool validateCpuIs(StringRef Name) const override;
+  bool validateCpuIs(StringRef FeatureStr) const override;
 
   bool validateCPUSpecificCPUDispatch(StringRef Name) const override;
 
@@ -208,9 +223,7 @@ public:
       StringRef Name,
       llvm::SmallVectorImpl<StringRef> &Features) const override;
 
-  StringRef getCPUSpecificTuneName(StringRef Name) const override;
-
-  Optional<unsigned> getCPUCacheLineSize() const override;
+  std::optional<unsigned> getCPUCacheLineSize() const override;
 
   bool validateAsmConstraint(const char *&Name,
                              TargetInfo::ConstraintInfo &info) const override;
@@ -236,19 +249,23 @@ public:
 
   bool
   checkCFProtectionReturnSupported(DiagnosticsEngine &Diags) const override {
-    return true;
+    if (CPU == llvm::X86::CK_None || CPU >= llvm::X86::CK_PentiumPro)
+      return true;
+    return TargetInfo::checkCFProtectionReturnSupported(Diags);
   };
 
   bool
   checkCFProtectionBranchSupported(DiagnosticsEngine &Diags) const override {
-    return true;
+    if (CPU == llvm::X86::CK_None || CPU >= llvm::X86::CK_PentiumPro)
+      return true;
+    return TargetInfo::checkCFProtectionBranchSupported(Diags);
   };
 
   virtual bool validateOperandSize(const llvm::StringMap<bool> &FeatureMap,
                                    StringRef Constraint, unsigned Size) const;
 
   std::string convertConstraint(const char *&Constraint) const override;
-  const char *getClobbers() const override {
+  std::string_view getClobbers() const override {
     return "~{dirflag},~{fpsr},~{flags}";
   }
 
@@ -291,10 +308,6 @@ public:
 
   bool useFP16ConversionIntrinsics() const override {
     return false;
-  }
-
-  bool shouldEmitFloat16WithExcessPrecision() const override {
-    return HasFloat16 && !hasLegalHalfType();
   }
 
   void getTargetDefines(const LangOptions &Opts,
@@ -394,19 +407,19 @@ public:
 
   void setSupportedOpenCLOpts() override { supportAllOpenCLOpts(); }
 
-  uint64_t getPointerWidthV(unsigned AddrSpace) const override {
-    if (AddrSpace == ptr32_sptr || AddrSpace == ptr32_uptr)
+  uint64_t getPointerWidthV(LangAS AS) const override {
+    unsigned TargetAddrSpace = getTargetAddressSpace(AS);
+    if (TargetAddrSpace == ptr32_sptr || TargetAddrSpace == ptr32_uptr)
       return 32;
-    if (AddrSpace == ptr64)
+    if (TargetAddrSpace == ptr64)
       return 64;
     return PointerWidth;
   }
 
-  uint64_t getPointerAlignV(unsigned AddrSpace) const override {
+  uint64_t getPointerAlignV(LangAS AddrSpace) const override {
     return getPointerWidthV(AddrSpace);
   }
 
-  const char *getBFloat16Mangling() const override { return "u6__bf16"; };
 };
 
 // X86-32 generic target
@@ -482,6 +495,9 @@ public:
   ArrayRef<Builtin::Info> getTargetBuiltins() const override;
 
   bool hasBitIntType() const override { return true; }
+  size_t getMaxBitIntWidth() const override {
+    return llvm::IntegerType::MAX_INT_BITS;
+  }
 };
 
 class LLVM_LIBRARY_VISIBILITY NetBSDI386TargetInfo
@@ -789,6 +805,9 @@ public:
   ArrayRef<Builtin::Info> getTargetBuiltins() const override;
 
   bool hasBitIntType() const override { return true; }
+  size_t getMaxBitIntWidth() const override {
+    return llvm::IntegerType::MAX_INT_BITS;
+  }
 };
 
 // x86-64 Windows target
@@ -947,6 +966,28 @@ class LLVM_LIBRARY_VISIBILITY AndroidX86_64TargetInfo
 public:
   AndroidX86_64TargetInfo(const llvm::Triple &Triple, const TargetOptions &Opts)
       : LinuxTargetInfo<X86_64TargetInfo>(Triple, Opts) {
+    LongDoubleFormat = &llvm::APFloat::IEEEquad();
+  }
+};
+
+// x86_32 OHOS target
+class LLVM_LIBRARY_VISIBILITY OHOSX86_32TargetInfo
+    : public OHOSTargetInfo<X86_32TargetInfo> {
+public:
+  OHOSX86_32TargetInfo(const llvm::Triple &Triple, const TargetOptions &Opts)
+      : OHOSTargetInfo<X86_32TargetInfo>(Triple, Opts) {
+    SuitableAlign = 32;
+    LongDoubleWidth = 64;
+    LongDoubleFormat = &llvm::APFloat::IEEEdouble();
+  }
+};
+
+// x86_64 OHOS target
+class LLVM_LIBRARY_VISIBILITY OHOSX86_64TargetInfo
+    : public OHOSTargetInfo<X86_64TargetInfo> {
+public:
+  OHOSX86_64TargetInfo(const llvm::Triple &Triple, const TargetOptions &Opts)
+      : OHOSTargetInfo<X86_64TargetInfo>(Triple, Opts) {
     LongDoubleFormat = &llvm::APFloat::IEEEquad();
   }
 };

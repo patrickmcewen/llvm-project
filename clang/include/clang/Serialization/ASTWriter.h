@@ -128,10 +128,17 @@ private:
   /// The module we're currently writing, if any.
   Module *WritingModule = nullptr;
 
-  /// The offset of the first bit inside the AST_BLOCK.
+  /// The byte range representing all the UNHASHED_CONTROL_BLOCK.
+  std::pair<uint64_t, uint64_t> UnhashedControlBlockRange;
+  /// The bit offset of the AST block hash blob.
+  uint64_t ASTBlockHashOffset = 0;
+  /// The bit offset of the signature blob.
+  uint64_t SignatureOffset = 0;
+
+  /// The bit offset of the first bit inside the AST_BLOCK.
   uint64_t ASTBlockStartOffset = 0;
 
-  /// The range representing all the AST_BLOCK.
+  /// The byte range representing all the AST_BLOCK.
   std::pair<uint64_t, uint64_t> ASTBlockRange;
 
   /// The base directory for any relative paths we emit.
@@ -142,6 +149,11 @@ private:
   /// module cache, where we need the timestamps to determine if the module
   /// file is up to date, but not otherwise.
   bool IncludeTimestamps;
+
+  /// Indicates whether the AST file being written is an implicit module.
+  /// If that's the case, we may be able to skip writing some information that
+  /// are guaranteed to be the same in the importer by the context hash.
+  bool BuildingImplicitModule = false;
 
   /// Indicates when the AST writing is actively performing
   /// serialization, rather than just queueing updates.
@@ -444,8 +456,40 @@ private:
   std::vector<std::unique_ptr<ModuleFileExtensionWriter>>
       ModuleFileExtensionWriters;
 
-  /// User ModuleMaps skipped when writing control block.
-  std::set<const FileEntry *> SkippedModuleMaps;
+  /// Mapping from a source location entry to whether it is affecting or not.
+  llvm::BitVector IsSLocAffecting;
+
+  /// Mapping from \c FileID to an index into the FileID adjustment table.
+  std::vector<FileID> NonAffectingFileIDs;
+  std::vector<unsigned> NonAffectingFileIDAdjustments;
+
+  /// Mapping from an offset to an index into the offset adjustment table.
+  std::vector<SourceRange> NonAffectingRanges;
+  std::vector<SourceLocation::UIntTy> NonAffectingOffsetAdjustments;
+
+  /// Collects input files that didn't affect compilation of the current module,
+  /// and initializes data structures necessary for leaving those files out
+  /// during \c SourceManager serialization.
+  void collectNonAffectingInputFiles();
+
+  /// Returns an adjusted \c FileID, accounting for any non-affecting input
+  /// files.
+  FileID getAdjustedFileID(FileID FID) const;
+  /// Returns an adjusted number of \c FileIDs created within the specified \c
+  /// FileID, accounting for any non-affecting input files.
+  unsigned getAdjustedNumCreatedFIDs(FileID FID) const;
+  /// Returns an adjusted \c SourceLocation, accounting for any non-affecting
+  /// input files.
+  SourceLocation getAdjustedLocation(SourceLocation Loc) const;
+  /// Returns an adjusted \c SourceRange, accounting for any non-affecting input
+  /// files.
+  SourceRange getAdjustedRange(SourceRange Range) const;
+  /// Returns an adjusted \c SourceLocation offset, accounting for any
+  /// non-affecting input files.
+  SourceLocation::UIntTy getAdjustedOffset(SourceLocation::UIntTy Offset) const;
+  /// Returns an adjustment for offset into SourceManager, accounting for any
+  /// non-affecting input files.
+  SourceLocation::UIntTy getAdjustment(SourceLocation::UIntTy Offset) const;
 
   /// Retrieve or create a submodule ID for this module.
   unsigned getSubmoduleID(Module *Mod);
@@ -458,18 +502,15 @@ private:
                          StringRef isysroot);
 
   /// Write out the signature and diagnostic options, and return the signature.
-  ASTFileSignature writeUnhashedControlBlock(Preprocessor &PP,
-                                             ASTContext &Context);
+  void writeUnhashedControlBlock(Preprocessor &PP, ASTContext &Context);
+  ASTFileSignature backpatchSignature();
 
   /// Calculate hash of the pcm content.
-  static std::pair<ASTFileSignature, ASTFileSignature>
-  createSignature(StringRef AllBytes, StringRef ASTBlockBytes);
+  std::pair<ASTFileSignature, ASTFileSignature> createSignature() const;
 
-  void WriteInputFiles(SourceManager &SourceMgr, HeaderSearchOptions &HSOpts,
-                       std::set<const FileEntry *> &AffectingModuleMaps);
+  void WriteInputFiles(SourceManager &SourceMgr, HeaderSearchOptions &HSOpts);
   void WriteSourceManagerBlock(SourceManager &SourceMgr,
                                const Preprocessor &PP);
-  void writeIncludedFiles(raw_ostream &Out, const Preprocessor &PP);
   void WritePreprocessor(const Preprocessor &PP, bool IsModule);
   void WriteHeaderSearch(const HeaderSearch &HS);
   void WritePreprocessorDetail(PreprocessingRecord &PPRec,
@@ -541,7 +582,7 @@ public:
   ASTWriter(llvm::BitstreamWriter &Stream, SmallVectorImpl<char> &Buffer,
             InMemoryModuleCache &ModuleCache,
             ArrayRef<std::shared_ptr<ModuleFileExtension>> Extensions,
-            bool IncludeTimestamps = true);
+            bool IncludeTimestamps = true, bool BuildingImplicitModule = false);
   ~ASTWriter() override;
 
   ASTContext &getASTContext() const {
@@ -581,6 +622,9 @@ public:
   /// Emit a AlignPackInfo.
   void AddAlignPackInfo(const Sema::AlignPackInfo &Info,
                         RecordDataImpl &Record);
+
+  /// Emit a FileID.
+  void AddFileID(FileID FID, RecordDataImpl &Record);
 
   /// Emit a source location.
   void AddSourceLocation(SourceLocation Loc, RecordDataImpl &Record,
@@ -702,7 +746,7 @@ public:
   bool hasChain() const { return Chain; }
   ASTReader *getChain() const { return Chain; }
 
-  bool isWritingNamedModules() const {
+  bool isWritingStdCXXNamedModules() const {
     return WritingModule && WritingModule->isModulePurview();
   }
 
@@ -776,6 +820,7 @@ public:
                std::shared_ptr<PCHBuffer> Buffer,
                ArrayRef<std::shared_ptr<ModuleFileExtension>> Extensions,
                bool AllowASTWithErrors = false, bool IncludeTimestamps = true,
+               bool BuildingImplicitModule = false,
                bool ShouldCacheASTInMemory = false);
   ~PCHGenerator() override;
 

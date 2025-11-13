@@ -1,5 +1,5 @@
-// RUN: not llvm-mc -arch=amdgcn -mcpu=gfx1100 -show-encoding %s | FileCheck --check-prefix=GFX11 %s
-// RUN: not llvm-mc -arch=amdgcn -mcpu=gfx1100 -show-encoding %s 2>&1 | FileCheck --check-prefixes=GFX11-ERR --implicit-check-not=error: %s
+// RUN: not llvm-mc -triple=amdgcn -mcpu=gfx1100 -show-encoding %s | FileCheck --check-prefix=GFX11 %s
+// RUN: not llvm-mc -triple=amdgcn -mcpu=gfx1100 -show-encoding %s 2>&1 | FileCheck --check-prefixes=GFX11-ERR --implicit-check-not=error: %s
 
 buffer_load_dword v5, off, s[8:11], s3 offset:4095
 // GFX11: encoding: [0xff,0x0f,0x50,0xe0,0x00,0x05,0x02,0x03]
@@ -114,6 +114,9 @@ buffer_load_dwordx2 v[5:6], off, s[8:11], s3 offset:4095 slc
 
 buffer_load_dwordx2 v[5:6], off, s[8:11], s3 offset:4095 dlc
 // GFX11: encoding: [0xff,0x2f,0x54,0xe0,0x00,0x05,0x02,0x03]
+
+buffer_load_dwordx2 v[5:7], off, s[8:11], s3 offset:4095 dlc tfe
+// GFX11: encoding: [0xff,0x2f,0x54,0xe0,0x00,0x05,0x22,0x03]
 
 buffer_load_dwordx2 v[5:6], off, s[8:11], s3 offset:4095 glc slc dlc
 // GFX11: encoding: [0xff,0x7f,0x54,0xe0,0x00,0x05,0x02,0x03]

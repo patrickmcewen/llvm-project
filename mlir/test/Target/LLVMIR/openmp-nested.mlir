@@ -1,5 +1,5 @@
 // RUN: mlir-translate -mlir-to-llvmir -split-input-file %s | FileCheck %s
- 
+
 module {
   llvm.func @printf(!llvm.ptr<i8>, ...) -> i32
   llvm.mlir.global internal constant @str0("WG size of kernel = %d X %d\0A\00")
@@ -23,7 +23,7 @@ module {
         %20 = llvm.trunc %19 : i64 to i32
         %5 = llvm.mlir.addressof @str0 : !llvm.ptr<array<29 x i8>>
         %6 = llvm.getelementptr %5[%4, %4] : (!llvm.ptr<array<29 x i8>>, i32, i32) -> !llvm.ptr<i8>
-        %21 = llvm.call @printf(%6, %20, %20) : (!llvm.ptr<i8>, i32, i32) -> i32
+        %21 = llvm.call @printf(%6, %20, %20) vararg(!llvm.func<i32 (ptr<i8>, ...)>): (!llvm.ptr<i8>, i32, i32) -> i32
         omp.yield
       }
       omp.terminator
@@ -38,4 +38,4 @@ module {
 
 // CHECK: define internal void @[[inner1]]
 // CHECK: %[[structArg:.+]] = alloca { ptr }
-// CHECK: call void (ptr, i32, ptr, ...) @__kmpc_fork_call(ptr @3, i32 1, ptr @[[inner2:.+]], ptr %[[structArg]])
+// CHECK: call void (ptr, i32, ptr, ...) @__kmpc_fork_call(ptr @1, i32 1, ptr @[[inner2:.+]], ptr %[[structArg]])

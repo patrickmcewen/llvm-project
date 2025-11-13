@@ -18,7 +18,8 @@ def NeoverseN2Model : SchedMachineModel {
   let LoopMicroOpBufferSize =  16; // NOTE: Copied from Cortex-A57.
   let CompleteModel         =   1;
 
-  list<Predicate> UnsupportedFeatures = SMEUnsupported.F;
+  list<Predicate> UnsupportedFeatures = !listconcat(SMEUnsupported.F,
+                                                    [HasSVE2p1]);
 }
 
 //===----------------------------------------------------------------------===//
@@ -81,15 +82,15 @@ def N2Write_1cyc_1L01 : SchedWriteRes<[N2UnitL01]> { let Latency = 1; }
 def N2Write_2cyc_1M   : SchedWriteRes<[N2UnitM]>   { let Latency = 2; }
 def N2Write_3cyc_1M   : SchedWriteRes<[N2UnitM]>   { let Latency = 3; }
 def N2Write_2cyc_1M0  : SchedWriteRes<[N2UnitM0]>  { let Latency = 2;
-                                                     let ResourceCycles = [2]; }
+                                                     let ReleaseAtCycles = [2]; }
 def N2Write_3cyc_1M0  : SchedWriteRes<[N2UnitM0]>  { let Latency = 3;
-                                                     let ResourceCycles = [3]; }
+                                                     let ReleaseAtCycles = [3]; }
 def N2Write_5cyc_1M0  : SchedWriteRes<[N2UnitM0]>  { let Latency = 5;
-                                                     let ResourceCycles = [5]; }
+                                                     let ReleaseAtCycles = [5]; }
 def N2Write_12cyc_1M0 : SchedWriteRes<[N2UnitM0]>  { let Latency = 12;
-                                                     let ResourceCycles = [12]; }
+                                                     let ReleaseAtCycles = [12]; }
 def N2Write_20cyc_1M0 : SchedWriteRes<[N2UnitM0]>  { let Latency = 20;
-                                                     let ResourceCycles = [20]; }
+                                                     let ReleaseAtCycles = [20]; }
 def N2Write_4cyc_1L   : SchedWriteRes<[N2UnitL]>   { let Latency = 4; }
 def N2Write_6cyc_1L   : SchedWriteRes<[N2UnitL]>   { let Latency = 6; }
 def N2Write_2cyc_1V   : SchedWriteRes<[N2UnitV]>   { let Latency = 2; }
@@ -101,7 +102,7 @@ def N2Write_2cyc_1V0  : SchedWriteRes<[N2UnitV0]>  { let Latency = 2; }
 def N2Write_3cyc_1V0  : SchedWriteRes<[N2UnitV0]>  { let Latency = 3; }
 def N2Write_4cyc_1V0  : SchedWriteRes<[N2UnitV0]>  { let Latency = 4; }
 def N2Write_7cyc_1V0  : SchedWriteRes<[N2UnitV0]>  { let Latency = 7;
-                                                     let ResourceCycles = [7]; }
+                                                     let ReleaseAtCycles = [7]; }
 def N2Write_9cyc_1V0  : SchedWriteRes<[N2UnitV0]>  { let Latency = 9; }
 def N2Write_10cyc_1V0 : SchedWriteRes<[N2UnitV0]>  { let Latency = 10; }
 def N2Write_12cyc_1V0 : SchedWriteRes<[N2UnitV0]>  { let Latency = 12; }
@@ -187,25 +188,25 @@ def N2Write_4cyc_2V0 : SchedWriteRes<[N2UnitV0, N2UnitV0]> {
 def N2Write_10cyc_2V0 : SchedWriteRes<[N2UnitV0, N2UnitV0]> {
   let Latency = 10;
   let NumMicroOps = 2;
-  let ResourceCycles = [5, 5];
+  let ReleaseAtCycles = [5, 5];
 }
 
 def N2Write_13cyc_2V0 : SchedWriteRes<[N2UnitV0, N2UnitV0]> {
   let Latency = 13;
   let NumMicroOps = 2;
-  let ResourceCycles = [6, 7];
+  let ReleaseAtCycles = [6, 7];
 }
 
 def N2Write_15cyc_2V0 : SchedWriteRes<[N2UnitV0, N2UnitV0]> {
   let Latency = 15;
   let NumMicroOps = 2;
-  let ResourceCycles = [7, 8];
+  let ReleaseAtCycles = [7, 8];
 }
 
 def N2Write_16cyc_2V0 : SchedWriteRes<[N2UnitV0, N2UnitV0]> {
   let Latency = 16;
   let NumMicroOps = 2;
-  let ResourceCycles = [8, 8];
+  let ReleaseAtCycles = [8, 8];
 }
 
 def N2Write_4cyc_2V : SchedWriteRes<[N2UnitV, N2UnitV]> {
@@ -608,6 +609,16 @@ def N2Write_11cyc_9L01_9S_9V : SchedWriteRes<[N2UnitL01, N2UnitL01, N2UnitL01,
   let NumMicroOps = 27;
 }
 
+//===----------------------------------------------------------------------===//
+// Define types for arithmetic and logical ops with short shifts
+def N2Write_Arith : SchedWriteVariant<[
+                      SchedVar<IsCheapLSL,  [N2Write_1cyc_1I]>,
+                      SchedVar<NoSchedPred, [N2Write_2cyc_1M]>]>;
+
+def N2Write_Logical: SchedWriteVariant<[
+                       SchedVar<NeoverseNoLSL, [N2Write_1cyc_1I]>,
+                       SchedVar<NoSchedPred,   [N2Write_2cyc_1M]>]>;
+
 // Miscellaneous
 // -----------------------------------------------------------------------------
 
@@ -635,8 +646,19 @@ def : InstRW<[N2Write_1cyc_1B_1S], (instrs BL, BLR)>;
 def : SchedAlias<WriteI,     N2Write_1cyc_1I>;
 
 // ALU, extend and shift
-def : SchedAlias<WriteISReg, N2Write_2cyc_1M>;
 def : SchedAlias<WriteIEReg, N2Write_2cyc_1M>;
+
+// Arithmetic, LSL shift, shift <= 4
+// Arithmetic, flagset, LSL shift, shift <= 4
+// Arithmetic, LSR/ASR/ROR shift or LSL shift > 4
+def : SchedAlias<WriteISReg, N2Write_Arith>;
+
+// Logical, shift, no flagset
+def : InstRW<[N2Write_1cyc_1I],
+             (instregex "^(AND|BIC|EON|EOR|ORN|ORR)[WX]rs$")>;
+
+// Logical, shift, flagset
+def : InstRW<[N2Write_Logical], (instregex "^(AND|BIC)S[WX]rs$")>;
 
 // Arithmetic, immediate to logical address tag
 def : InstRW<[N2Write_2cyc_1M], (instrs ADDG, SUBG)>;
@@ -757,8 +779,8 @@ def : InstRW<[N2Write_1cyc_1L01_1D_1I], (instrs STGPreIndex, STGPostIndex,
 // Store allocation tag to two granules, zeroing, signed offset
 // Store allocation tag and reg pair to memory, signed offset
 // Store multiple allocation tags
-def : InstRW<[N2Write_1cyc_1L01_1D], (instrs STGOffset, ST2GOffset, STZGOffset,
-                                             STZ2GOffset, STGPi, STGM, STZGM)>;
+def : InstRW<[N2Write_1cyc_1L01_1D], (instrs STGi, ST2Gi, STZGi,
+                                             STZ2Gi, STGPi, STGM, STZGM)>;
 
 // FP data processing instructions
 // -----------------------------------------------------------------------------
@@ -1209,7 +1231,7 @@ def : InstRW<[N2Write_6cyc_4V], (instrs TBXv8i8Three, TBXv16i8Three)>;
 def : InstRW<[N2Write_6cyc_8V], (instrs TBXv8i8Four, TBXv16i8Four)>;
 
 // ASIMD transfer, gen reg to element
-def : InstRW<[N2Write_5cyc_1M0_1V], (instregex "^INSv")>;
+def : InstRW<[N2Write_5cyc_1M0_1V], (instregex "^INSvi(8|16|32|64)gpr$")>;
 
 // ASIMD load instructions
 // -----------------------------------------------------------------------------
@@ -2048,7 +2070,7 @@ def : InstRW<[N2Write_4cyc_1V], (instrs BFDOT_ZZI, BFDOT_ZZZ)>;
 def : InstRW<[N2Write_5cyc_1V], (instrs BFMMLA_ZZZ)>;
 
 // Multiply accumulate long
-def : InstRW<[N2Write_4cyc_1V], (instregex "^BFMLAL[BT]_ZZ[ZI]$")>;
+def : InstRW<[N2Write_4cyc_1V], (instregex "^BFMLAL[BT]_ZZZ(I)?$")>;
 
 // SVE Load instructions
 // -----------------------------------------------------------------------------

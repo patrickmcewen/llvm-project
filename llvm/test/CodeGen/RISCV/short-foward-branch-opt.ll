@@ -2,7 +2,9 @@
 ; RUN: llc -mtriple=riscv64 -mattr=+c -verify-machineinstrs < %s \
 ; RUN:   | FileCheck -check-prefix=NOSFB %s
 ; RUN: llc -mtriple=riscv64 -mcpu=sifive-u74 -verify-machineinstrs < %s \
-; RUN:   | FileCheck -check-prefix=SFB %s
+; RUN:   | FileCheck -check-prefixes=SFB,NOZICOND %s
+; RUN: llc -mtriple=riscv64 -mcpu=sifive-u74 -mattr=+experimental-zicond \
+; RUN:   -verify-machineinstrs < %s | FileCheck -check-prefixes=SFB,ZICOND %s
 
 ; The sifive-7-series can predicate a mv.
 
@@ -91,13 +93,18 @@ define signext i32 @test4(i32 signext %x, i32 signext %z) {
 ; NOSFB-NEXT:    and a0, a0, a1
 ; NOSFB-NEXT:    ret
 ;
-; SFB-LABEL: test4:
-; SFB:       # %bb.0:
-; SFB-NEXT:    beqz a1, .LBB3_2
-; SFB-NEXT:  # %bb.1:
-; SFB-NEXT:    li a0, 0
-; SFB-NEXT:  .LBB3_2:
-; SFB-NEXT:    ret
+; NOZICOND-LABEL: test4:
+; NOZICOND:       # %bb.0:
+; NOZICOND-NEXT:    beqz a1, .LBB3_2
+; NOZICOND-NEXT:  # %bb.1:
+; NOZICOND-NEXT:    li a0, 0
+; NOZICOND-NEXT:  .LBB3_2:
+; NOZICOND-NEXT:    ret
+;
+; ZICOND-LABEL: test4:
+; ZICOND:       # %bb.0:
+; ZICOND-NEXT:    czero.nez a0, a0, a1
+; ZICOND-NEXT:    ret
   %c = icmp eq i32 %z, 0
   %b = select i1 %c, i32 %x, i32 0
   ret i32 %b
@@ -112,13 +119,18 @@ define signext i32 @test5(i32 signext %x, i32 signext %z) {
 ; NOSFB-NEXT:    and a0, a0, a1
 ; NOSFB-NEXT:    ret
 ;
-; SFB-LABEL: test5:
-; SFB:       # %bb.0:
-; SFB-NEXT:    bnez a1, .LBB4_2
-; SFB-NEXT:  # %bb.1:
-; SFB-NEXT:    li a0, 0
-; SFB-NEXT:  .LBB4_2:
-; SFB-NEXT:    ret
+; NOZICOND-LABEL: test5:
+; NOZICOND:       # %bb.0:
+; NOZICOND-NEXT:    bnez a1, .LBB4_2
+; NOZICOND-NEXT:  # %bb.1:
+; NOZICOND-NEXT:    li a0, 0
+; NOZICOND-NEXT:  .LBB4_2:
+; NOZICOND-NEXT:    ret
+;
+; ZICOND-LABEL: test5:
+; ZICOND:       # %bb.0:
+; ZICOND-NEXT:    czero.eqz a0, a0, a1
+; ZICOND-NEXT:    ret
   %c = icmp eq i32 %z, 0
   %b = select i1 %c, i32 0, i32 %x
   ret i32 %b
@@ -171,8 +183,8 @@ define signext i32 @test7(i32 signext %x, i32 signext %z) {
 define i16 @select_xor_1(i16 %A, i8 %cond) {
 ; NOSFB-LABEL: select_xor_1:
 ; NOSFB:       # %bb.0: # %entry
-; NOSFB-NEXT:    andi a1, a1, 1
-; NOSFB-NEXT:    negw a1, a1
+; NOSFB-NEXT:    slli a1, a1, 63
+; NOSFB-NEXT:    srai a1, a1, 63
 ; NOSFB-NEXT:    andi a1, a1, 43
 ; NOSFB-NEXT:    xor a0, a0, a1
 ; NOSFB-NEXT:    ret
@@ -180,10 +192,9 @@ define i16 @select_xor_1(i16 %A, i8 %cond) {
 ; SFB-LABEL: select_xor_1:
 ; SFB:       # %bb.0: # %entry
 ; SFB-NEXT:    andi a1, a1, 1
-; SFB-NEXT:    xori a2, a0, 43
 ; SFB-NEXT:    beqz a1, .LBB7_2
 ; SFB-NEXT:  # %bb.1: # %entry
-; SFB-NEXT:    mv a0, a2
+; SFB-NEXT:    xori a0, a0, 43
 ; SFB-NEXT:  .LBB7_2: # %entry
 ; SFB-NEXT:    ret
 entry:
@@ -199,8 +210,8 @@ entry:
 define i16 @select_xor_1b(i16 %A, i8 %cond) {
 ; NOSFB-LABEL: select_xor_1b:
 ; NOSFB:       # %bb.0: # %entry
-; NOSFB-NEXT:    andi a1, a1, 1
-; NOSFB-NEXT:    negw a1, a1
+; NOSFB-NEXT:    slli a1, a1, 63
+; NOSFB-NEXT:    srai a1, a1, 63
 ; NOSFB-NEXT:    andi a1, a1, 43
 ; NOSFB-NEXT:    xor a0, a0, a1
 ; NOSFB-NEXT:    ret
@@ -208,10 +219,9 @@ define i16 @select_xor_1b(i16 %A, i8 %cond) {
 ; SFB-LABEL: select_xor_1b:
 ; SFB:       # %bb.0: # %entry
 ; SFB-NEXT:    andi a1, a1, 1
-; SFB-NEXT:    xori a2, a0, 43
 ; SFB-NEXT:    beqz a1, .LBB8_2
 ; SFB-NEXT:  # %bb.1: # %entry
-; SFB-NEXT:    mv a0, a2
+; SFB-NEXT:    xori a0, a0, 43
 ; SFB-NEXT:  .LBB8_2: # %entry
 ; SFB-NEXT:    ret
 entry:
@@ -225,8 +235,8 @@ entry:
 define i32 @select_xor_2(i32 %A, i32 %B, i8 %cond) {
 ; NOSFB-LABEL: select_xor_2:
 ; NOSFB:       # %bb.0: # %entry
-; NOSFB-NEXT:    andi a2, a2, 1
-; NOSFB-NEXT:    neg a2, a2
+; NOSFB-NEXT:    slli a2, a2, 63
+; NOSFB-NEXT:    srai a2, a2, 63
 ; NOSFB-NEXT:    and a1, a1, a2
 ; NOSFB-NEXT:    xor a0, a0, a1
 ; NOSFB-NEXT:    ret
@@ -234,10 +244,9 @@ define i32 @select_xor_2(i32 %A, i32 %B, i8 %cond) {
 ; SFB-LABEL: select_xor_2:
 ; SFB:       # %bb.0: # %entry
 ; SFB-NEXT:    andi a2, a2, 1
-; SFB-NEXT:    xor a1, a1, a0
 ; SFB-NEXT:    beqz a2, .LBB9_2
 ; SFB-NEXT:  # %bb.1: # %entry
-; SFB-NEXT:    mv a0, a1
+; SFB-NEXT:    xor a0, a0, a1
 ; SFB-NEXT:  .LBB9_2: # %entry
 ; SFB-NEXT:    ret
 entry:
@@ -253,8 +262,8 @@ entry:
 define i32 @select_xor_2b(i32 %A, i32 %B, i8 %cond) {
 ; NOSFB-LABEL: select_xor_2b:
 ; NOSFB:       # %bb.0: # %entry
-; NOSFB-NEXT:    andi a2, a2, 1
-; NOSFB-NEXT:    neg a2, a2
+; NOSFB-NEXT:    slli a2, a2, 63
+; NOSFB-NEXT:    srai a2, a2, 63
 ; NOSFB-NEXT:    and a1, a1, a2
 ; NOSFB-NEXT:    xor a0, a0, a1
 ; NOSFB-NEXT:    ret
@@ -262,10 +271,9 @@ define i32 @select_xor_2b(i32 %A, i32 %B, i8 %cond) {
 ; SFB-LABEL: select_xor_2b:
 ; SFB:       # %bb.0: # %entry
 ; SFB-NEXT:    andi a2, a2, 1
-; SFB-NEXT:    xor a1, a1, a0
 ; SFB-NEXT:    beqz a2, .LBB10_2
 ; SFB-NEXT:  # %bb.1: # %entry
-; SFB-NEXT:    mv a0, a1
+; SFB-NEXT:    xor a0, a0, a1
 ; SFB-NEXT:  .LBB10_2: # %entry
 ; SFB-NEXT:    ret
 entry:
@@ -279,8 +287,8 @@ entry:
 define i32 @select_or(i32 %A, i32 %B, i8 %cond) {
 ; NOSFB-LABEL: select_or:
 ; NOSFB:       # %bb.0: # %entry
-; NOSFB-NEXT:    andi a2, a2, 1
-; NOSFB-NEXT:    neg a2, a2
+; NOSFB-NEXT:    slli a2, a2, 63
+; NOSFB-NEXT:    srai a2, a2, 63
 ; NOSFB-NEXT:    and a1, a1, a2
 ; NOSFB-NEXT:    or a0, a0, a1
 ; NOSFB-NEXT:    ret
@@ -288,10 +296,9 @@ define i32 @select_or(i32 %A, i32 %B, i8 %cond) {
 ; SFB-LABEL: select_or:
 ; SFB:       # %bb.0: # %entry
 ; SFB-NEXT:    andi a2, a2, 1
-; SFB-NEXT:    or a1, a1, a0
 ; SFB-NEXT:    beqz a2, .LBB11_2
 ; SFB-NEXT:  # %bb.1: # %entry
-; SFB-NEXT:    mv a0, a1
+; SFB-NEXT:    or a0, a0, a1
 ; SFB-NEXT:  .LBB11_2: # %entry
 ; SFB-NEXT:    ret
 entry:
@@ -307,8 +314,8 @@ entry:
 define i32 @select_or_b(i32 %A, i32 %B, i8 %cond) {
 ; NOSFB-LABEL: select_or_b:
 ; NOSFB:       # %bb.0: # %entry
-; NOSFB-NEXT:    andi a2, a2, 1
-; NOSFB-NEXT:    neg a2, a2
+; NOSFB-NEXT:    slli a2, a2, 63
+; NOSFB-NEXT:    srai a2, a2, 63
 ; NOSFB-NEXT:    and a1, a1, a2
 ; NOSFB-NEXT:    or a0, a0, a1
 ; NOSFB-NEXT:    ret
@@ -316,10 +323,9 @@ define i32 @select_or_b(i32 %A, i32 %B, i8 %cond) {
 ; SFB-LABEL: select_or_b:
 ; SFB:       # %bb.0: # %entry
 ; SFB-NEXT:    andi a2, a2, 1
-; SFB-NEXT:    or a1, a1, a0
 ; SFB-NEXT:    beqz a2, .LBB12_2
 ; SFB-NEXT:  # %bb.1: # %entry
-; SFB-NEXT:    mv a0, a1
+; SFB-NEXT:    or a0, a0, a1
 ; SFB-NEXT:  .LBB12_2: # %entry
 ; SFB-NEXT:    ret
 entry:
@@ -333,8 +339,8 @@ entry:
 define i32 @select_or_1(i32 %A, i32 %B, i32 %cond) {
 ; NOSFB-LABEL: select_or_1:
 ; NOSFB:       # %bb.0: # %entry
-; NOSFB-NEXT:    andi a2, a2, 1
-; NOSFB-NEXT:    neg a2, a2
+; NOSFB-NEXT:    slli a2, a2, 63
+; NOSFB-NEXT:    srai a2, a2, 63
 ; NOSFB-NEXT:    and a1, a1, a2
 ; NOSFB-NEXT:    or a0, a0, a1
 ; NOSFB-NEXT:    ret
@@ -342,10 +348,9 @@ define i32 @select_or_1(i32 %A, i32 %B, i32 %cond) {
 ; SFB-LABEL: select_or_1:
 ; SFB:       # %bb.0: # %entry
 ; SFB-NEXT:    andi a2, a2, 1
-; SFB-NEXT:    or a1, a1, a0
 ; SFB-NEXT:    beqz a2, .LBB13_2
 ; SFB-NEXT:  # %bb.1: # %entry
-; SFB-NEXT:    mv a0, a1
+; SFB-NEXT:    or a0, a0, a1
 ; SFB-NEXT:  .LBB13_2: # %entry
 ; SFB-NEXT:    ret
 entry:
@@ -361,8 +366,8 @@ entry:
 define i32 @select_or_1b(i32 %A, i32 %B, i32 %cond) {
 ; NOSFB-LABEL: select_or_1b:
 ; NOSFB:       # %bb.0: # %entry
-; NOSFB-NEXT:    andi a2, a2, 1
-; NOSFB-NEXT:    neg a2, a2
+; NOSFB-NEXT:    slli a2, a2, 63
+; NOSFB-NEXT:    srai a2, a2, 63
 ; NOSFB-NEXT:    and a1, a1, a2
 ; NOSFB-NEXT:    or a0, a0, a1
 ; NOSFB-NEXT:    ret
@@ -370,10 +375,9 @@ define i32 @select_or_1b(i32 %A, i32 %B, i32 %cond) {
 ; SFB-LABEL: select_or_1b:
 ; SFB:       # %bb.0: # %entry
 ; SFB-NEXT:    andi a2, a2, 1
-; SFB-NEXT:    or a1, a1, a0
 ; SFB-NEXT:    beqz a2, .LBB14_2
 ; SFB-NEXT:  # %bb.1: # %entry
-; SFB-NEXT:    mv a0, a1
+; SFB-NEXT:    or a0, a0, a1
 ; SFB-NEXT:  .LBB14_2: # %entry
 ; SFB-NEXT:    ret
 entry:
@@ -381,5 +385,546 @@ entry:
  %cmp10 = icmp ne i32 %and, 1
  %0 = or i32 %B, %A
  %1 = select i1 %cmp10, i32 %A, i32 %0
+ ret i32 %1
+}
+
+define void @sextw_removal_ccor(i1 %c, i32 signext %arg, i32 signext %arg1, i32 signext %arg2) nounwind {
+; NOSFB-LABEL: sextw_removal_ccor:
+; NOSFB:       # %bb.0: # %bb
+; NOSFB-NEXT:    addi sp, sp, -32
+; NOSFB-NEXT:    sd ra, 24(sp) # 8-byte Folded Spill
+; NOSFB-NEXT:    sd s0, 16(sp) # 8-byte Folded Spill
+; NOSFB-NEXT:    sd s1, 8(sp) # 8-byte Folded Spill
+; NOSFB-NEXT:    mv s0, a2
+; NOSFB-NEXT:    slli a0, a0, 63
+; NOSFB-NEXT:    srai a0, a0, 63
+; NOSFB-NEXT:    and a0, a0, a1
+; NOSFB-NEXT:    or s1, a0, a3
+; NOSFB-NEXT:  .LBB15_1: # %bb2
+; NOSFB-NEXT:    # =>This Inner Loop Header: Depth=1
+; NOSFB-NEXT:    mv a0, s1
+; NOSFB-NEXT:    call bar@plt
+; NOSFB-NEXT:    sllw s1, s1, s0
+; NOSFB-NEXT:    bnez a0, .LBB15_1
+; NOSFB-NEXT:  # %bb.2: # %bb7
+; NOSFB-NEXT:    ld ra, 24(sp) # 8-byte Folded Reload
+; NOSFB-NEXT:    ld s0, 16(sp) # 8-byte Folded Reload
+; NOSFB-NEXT:    ld s1, 8(sp) # 8-byte Folded Reload
+; NOSFB-NEXT:    addi sp, sp, 32
+; NOSFB-NEXT:    ret
+;
+; SFB-LABEL: sextw_removal_ccor:
+; SFB:       # %bb.0: # %bb
+; SFB-NEXT:    addi sp, sp, -32
+; SFB-NEXT:    sd ra, 24(sp) # 8-byte Folded Spill
+; SFB-NEXT:    sd s0, 16(sp) # 8-byte Folded Spill
+; SFB-NEXT:    sd s1, 8(sp) # 8-byte Folded Spill
+; SFB-NEXT:    mv s0, a3
+; SFB-NEXT:    andi a0, a0, 1
+; SFB-NEXT:    mv s1, a2
+; SFB-NEXT:    beqz a0, .LBB15_4
+; SFB-NEXT:  # %bb.3: # %bb
+; SFB-NEXT:    or s0, a3, a1
+; SFB-NEXT:  .LBB15_4: # %bb
+; SFB-NEXT:  .LBB15_1: # %bb2
+; SFB-NEXT:    # =>This Inner Loop Header: Depth=1
+; SFB-NEXT:    mv a0, s0
+; SFB-NEXT:    call bar@plt
+; SFB-NEXT:    sllw s0, s0, s1
+; SFB-NEXT:    bnez a0, .LBB15_1
+; SFB-NEXT:  # %bb.2: # %bb7
+; SFB-NEXT:    ld ra, 24(sp) # 8-byte Folded Reload
+; SFB-NEXT:    ld s0, 16(sp) # 8-byte Folded Reload
+; SFB-NEXT:    ld s1, 8(sp) # 8-byte Folded Reload
+; SFB-NEXT:    addi sp, sp, 32
+; SFB-NEXT:    ret
+bb:
+  %sel = select i1 %c, i32 %arg, i32 0
+  %or = or i32 %sel, %arg2
+  br label %bb2
+
+bb2:                                              ; preds = %bb2, %bb
+  %i3 = phi i32 [ %or, %bb ], [ %i5, %bb2 ]
+  %i4 = tail call signext i32 @bar(i32 signext %i3)
+  %i5 = shl i32 %i3, %arg1
+  %i6 = icmp eq i32 %i4, 0
+  br i1 %i6, label %bb7, label %bb2
+
+bb7:                                              ; preds = %bb2
+  ret void
+}
+declare signext i32 @bar(i32 signext)
+
+define void @sextw_removal_ccaddw(i1 %c, i32 signext %arg, i32 signext %arg1, i32 %arg2) nounwind {
+; NOSFB-LABEL: sextw_removal_ccaddw:
+; NOSFB:       # %bb.0: # %bb
+; NOSFB-NEXT:    addi sp, sp, -32
+; NOSFB-NEXT:    sd ra, 24(sp) # 8-byte Folded Spill
+; NOSFB-NEXT:    sd s0, 16(sp) # 8-byte Folded Spill
+; NOSFB-NEXT:    sd s1, 8(sp) # 8-byte Folded Spill
+; NOSFB-NEXT:    mv s0, a2
+; NOSFB-NEXT:    slli a0, a0, 63
+; NOSFB-NEXT:    srai a0, a0, 63
+; NOSFB-NEXT:    and a0, a0, a3
+; NOSFB-NEXT:    addw s1, a0, a1
+; NOSFB-NEXT:  .LBB16_1: # %bb2
+; NOSFB-NEXT:    # =>This Inner Loop Header: Depth=1
+; NOSFB-NEXT:    mv a0, s1
+; NOSFB-NEXT:    call bar@plt
+; NOSFB-NEXT:    sllw s1, s1, s0
+; NOSFB-NEXT:    bnez a0, .LBB16_1
+; NOSFB-NEXT:  # %bb.2: # %bb7
+; NOSFB-NEXT:    ld ra, 24(sp) # 8-byte Folded Reload
+; NOSFB-NEXT:    ld s0, 16(sp) # 8-byte Folded Reload
+; NOSFB-NEXT:    ld s1, 8(sp) # 8-byte Folded Reload
+; NOSFB-NEXT:    addi sp, sp, 32
+; NOSFB-NEXT:    ret
+;
+; SFB-LABEL: sextw_removal_ccaddw:
+; SFB:       # %bb.0: # %bb
+; SFB-NEXT:    addi sp, sp, -32
+; SFB-NEXT:    sd ra, 24(sp) # 8-byte Folded Spill
+; SFB-NEXT:    sd s0, 16(sp) # 8-byte Folded Spill
+; SFB-NEXT:    sd s1, 8(sp) # 8-byte Folded Spill
+; SFB-NEXT:    mv s0, a1
+; SFB-NEXT:    andi a0, a0, 1
+; SFB-NEXT:    mv s1, a2
+; SFB-NEXT:    beqz a0, .LBB16_4
+; SFB-NEXT:  # %bb.3: # %bb
+; SFB-NEXT:    addw s0, a1, a3
+; SFB-NEXT:  .LBB16_4: # %bb
+; SFB-NEXT:  .LBB16_1: # %bb2
+; SFB-NEXT:    # =>This Inner Loop Header: Depth=1
+; SFB-NEXT:    mv a0, s0
+; SFB-NEXT:    call bar@plt
+; SFB-NEXT:    sllw s0, s0, s1
+; SFB-NEXT:    bnez a0, .LBB16_1
+; SFB-NEXT:  # %bb.2: # %bb7
+; SFB-NEXT:    ld ra, 24(sp) # 8-byte Folded Reload
+; SFB-NEXT:    ld s0, 16(sp) # 8-byte Folded Reload
+; SFB-NEXT:    ld s1, 8(sp) # 8-byte Folded Reload
+; SFB-NEXT:    addi sp, sp, 32
+; SFB-NEXT:    ret
+bb:
+  %sel = select i1 %c, i32 %arg2, i32 0
+  %or = add i32 %sel, %arg
+  br label %bb2
+
+bb2:                                              ; preds = %bb2, %bb
+  %i3 = phi i32 [ %or, %bb ], [ %i5, %bb2 ]
+  %i4 = tail call signext i32 @bar(i32 signext %i3)
+  %i5 = shl i32 %i3, %arg1
+  %i6 = icmp eq i32 %i4, 0
+  br i1 %i6, label %bb7, label %bb2
+
+bb7:                                              ; preds = %bb2
+  ret void
+}
+
+define i32 @select_sllw(i32 %A, i32 %B, i32 %C, i1 zeroext %cond) {
+; NOSFB-LABEL: select_sllw:
+; NOSFB:       # %bb.0: # %entry
+; NOSFB-NEXT:    bnez a3, .LBB17_2
+; NOSFB-NEXT:  # %bb.1: # %entry
+; NOSFB-NEXT:    sllw a2, a0, a1
+; NOSFB-NEXT:  .LBB17_2: # %entry
+; NOSFB-NEXT:    mv a0, a2
+; NOSFB-NEXT:    ret
+;
+; SFB-LABEL: select_sllw:
+; SFB:       # %bb.0: # %entry
+; SFB-NEXT:    bnez a3, .LBB17_2
+; SFB-NEXT:  # %bb.1: # %entry
+; SFB-NEXT:    sllw a2, a0, a1
+; SFB-NEXT:  .LBB17_2: # %entry
+; SFB-NEXT:    mv a0, a2
+; SFB-NEXT:    ret
+entry:
+ %0 = shl i32 %A, %B
+ %1 = select i1 %cond, i32 %C, i32 %0
+ ret i32 %1
+}
+
+define i32 @select_srlw(i32 %A, i32 %B, i32 %C, i1 zeroext %cond) {
+; NOSFB-LABEL: select_srlw:
+; NOSFB:       # %bb.0: # %entry
+; NOSFB-NEXT:    bnez a3, .LBB18_2
+; NOSFB-NEXT:  # %bb.1: # %entry
+; NOSFB-NEXT:    srlw a2, a0, a1
+; NOSFB-NEXT:  .LBB18_2: # %entry
+; NOSFB-NEXT:    mv a0, a2
+; NOSFB-NEXT:    ret
+;
+; SFB-LABEL: select_srlw:
+; SFB:       # %bb.0: # %entry
+; SFB-NEXT:    bnez a3, .LBB18_2
+; SFB-NEXT:  # %bb.1: # %entry
+; SFB-NEXT:    srlw a2, a0, a1
+; SFB-NEXT:  .LBB18_2: # %entry
+; SFB-NEXT:    mv a0, a2
+; SFB-NEXT:    ret
+entry:
+ %0 = lshr i32 %A, %B
+ %1 = select i1 %cond, i32 %C, i32 %0
+ ret i32 %1
+}
+
+define i32 @select_sraw(i32 %A, i32 %B, i32 %C, i1 zeroext %cond) {
+; NOSFB-LABEL: select_sraw:
+; NOSFB:       # %bb.0: # %entry
+; NOSFB-NEXT:    bnez a3, .LBB19_2
+; NOSFB-NEXT:  # %bb.1: # %entry
+; NOSFB-NEXT:    sraw a2, a0, a1
+; NOSFB-NEXT:  .LBB19_2: # %entry
+; NOSFB-NEXT:    mv a0, a2
+; NOSFB-NEXT:    ret
+;
+; SFB-LABEL: select_sraw:
+; SFB:       # %bb.0: # %entry
+; SFB-NEXT:    bnez a3, .LBB19_2
+; SFB-NEXT:  # %bb.1: # %entry
+; SFB-NEXT:    sraw a2, a0, a1
+; SFB-NEXT:  .LBB19_2: # %entry
+; SFB-NEXT:    mv a0, a2
+; SFB-NEXT:    ret
+entry:
+ %0 = ashr i32 %A, %B
+ %1 = select i1 %cond, i32 %C, i32 %0
+ ret i32 %1
+}
+
+define i64 @select_sll(i64 %A, i64 %B, i64 %C, i1 zeroext %cond) {
+; NOSFB-LABEL: select_sll:
+; NOSFB:       # %bb.0: # %entry
+; NOSFB-NEXT:    bnez a3, .LBB20_2
+; NOSFB-NEXT:  # %bb.1: # %entry
+; NOSFB-NEXT:    sll a2, a0, a1
+; NOSFB-NEXT:  .LBB20_2: # %entry
+; NOSFB-NEXT:    mv a0, a2
+; NOSFB-NEXT:    ret
+;
+; SFB-LABEL: select_sll:
+; SFB:       # %bb.0: # %entry
+; SFB-NEXT:    bnez a3, .LBB20_2
+; SFB-NEXT:  # %bb.1: # %entry
+; SFB-NEXT:    sll a2, a0, a1
+; SFB-NEXT:  .LBB20_2: # %entry
+; SFB-NEXT:    mv a0, a2
+; SFB-NEXT:    ret
+entry:
+ %0 = shl i64 %A, %B
+ %1 = select i1 %cond, i64 %C, i64 %0
+ ret i64 %1
+}
+
+define i64 @select_srl(i64 %A, i64 %B, i64 %C, i1 zeroext %cond) {
+; NOSFB-LABEL: select_srl:
+; NOSFB:       # %bb.0: # %entry
+; NOSFB-NEXT:    bnez a3, .LBB21_2
+; NOSFB-NEXT:  # %bb.1: # %entry
+; NOSFB-NEXT:    srl a2, a0, a1
+; NOSFB-NEXT:  .LBB21_2: # %entry
+; NOSFB-NEXT:    mv a0, a2
+; NOSFB-NEXT:    ret
+;
+; SFB-LABEL: select_srl:
+; SFB:       # %bb.0: # %entry
+; SFB-NEXT:    bnez a3, .LBB21_2
+; SFB-NEXT:  # %bb.1: # %entry
+; SFB-NEXT:    srl a2, a0, a1
+; SFB-NEXT:  .LBB21_2: # %entry
+; SFB-NEXT:    mv a0, a2
+; SFB-NEXT:    ret
+entry:
+ %0 = lshr i64 %A, %B
+ %1 = select i1 %cond, i64 %C, i64 %0
+ ret i64 %1
+}
+
+define i64 @select_sra(i64 %A, i64 %B, i64 %C, i1 zeroext %cond) {
+; NOSFB-LABEL: select_sra:
+; NOSFB:       # %bb.0: # %entry
+; NOSFB-NEXT:    bnez a3, .LBB22_2
+; NOSFB-NEXT:  # %bb.1: # %entry
+; NOSFB-NEXT:    sra a2, a0, a1
+; NOSFB-NEXT:  .LBB22_2: # %entry
+; NOSFB-NEXT:    mv a0, a2
+; NOSFB-NEXT:    ret
+;
+; SFB-LABEL: select_sra:
+; SFB:       # %bb.0: # %entry
+; SFB-NEXT:    bnez a3, .LBB22_2
+; SFB-NEXT:  # %bb.1: # %entry
+; SFB-NEXT:    sra a2, a0, a1
+; SFB-NEXT:  .LBB22_2: # %entry
+; SFB-NEXT:    mv a0, a2
+; SFB-NEXT:    ret
+entry:
+ %0 = ashr i64 %A, %B
+ %1 = select i1 %cond, i64 %C, i64 %0
+ ret i64 %1
+}
+
+define i32 @select_addiw(i32 %A, i32 %C, i1 zeroext %cond) {
+; NOSFB-LABEL: select_addiw:
+; NOSFB:       # %bb.0: # %entry
+; NOSFB-NEXT:    bnez a2, .LBB23_2
+; NOSFB-NEXT:  # %bb.1: # %entry
+; NOSFB-NEXT:    addiw a1, a0, 1234
+; NOSFB-NEXT:  .LBB23_2: # %entry
+; NOSFB-NEXT:    mv a0, a1
+; NOSFB-NEXT:    ret
+;
+; SFB-LABEL: select_addiw:
+; SFB:       # %bb.0: # %entry
+; SFB-NEXT:    bnez a2, .LBB23_2
+; SFB-NEXT:  # %bb.1: # %entry
+; SFB-NEXT:    addiw a1, a0, 1234
+; SFB-NEXT:  .LBB23_2: # %entry
+; SFB-NEXT:    mv a0, a1
+; SFB-NEXT:    ret
+entry:
+ %0 = add i32 %A, 1234
+ %1 = select i1 %cond, i32 %C, i32 %0
+ ret i32 %1
+}
+
+define i64 @select_addi(i64 %A, i64 %C, i1 zeroext %cond) {
+; NOSFB-LABEL: select_addi:
+; NOSFB:       # %bb.0: # %entry
+; NOSFB-NEXT:    bnez a2, .LBB24_2
+; NOSFB-NEXT:  # %bb.1: # %entry
+; NOSFB-NEXT:    addi a1, a0, 1234
+; NOSFB-NEXT:  .LBB24_2: # %entry
+; NOSFB-NEXT:    mv a0, a1
+; NOSFB-NEXT:    ret
+;
+; SFB-LABEL: select_addi:
+; SFB:       # %bb.0: # %entry
+; SFB-NEXT:    bnez a2, .LBB24_2
+; SFB-NEXT:  # %bb.1: # %entry
+; SFB-NEXT:    addi a1, a0, 1234
+; SFB-NEXT:  .LBB24_2: # %entry
+; SFB-NEXT:    mv a0, a1
+; SFB-NEXT:    ret
+entry:
+ %0 = add i64 %A, 1234
+ %1 = select i1 %cond, i64 %C, i64 %0
+ ret i64 %1
+}
+
+define i64 @select_andi(i64 %A, i64 %C, i1 zeroext %cond) {
+; NOSFB-LABEL: select_andi:
+; NOSFB:       # %bb.0: # %entry
+; NOSFB-NEXT:    bnez a2, .LBB25_2
+; NOSFB-NEXT:  # %bb.1: # %entry
+; NOSFB-NEXT:    andi a1, a0, 567
+; NOSFB-NEXT:  .LBB25_2: # %entry
+; NOSFB-NEXT:    mv a0, a1
+; NOSFB-NEXT:    ret
+;
+; SFB-LABEL: select_andi:
+; SFB:       # %bb.0: # %entry
+; SFB-NEXT:    bnez a2, .LBB25_2
+; SFB-NEXT:  # %bb.1: # %entry
+; SFB-NEXT:    andi a1, a0, 567
+; SFB-NEXT:  .LBB25_2: # %entry
+; SFB-NEXT:    mv a0, a1
+; SFB-NEXT:    ret
+entry:
+ %0 = and i64 %A, 567
+ %1 = select i1 %cond, i64 %C, i64 %0
+ ret i64 %1
+}
+
+define i64 @select_ori(i64 %A, i64 %C, i1 zeroext %cond) {
+; NOSFB-LABEL: select_ori:
+; NOSFB:       # %bb.0: # %entry
+; NOSFB-NEXT:    bnez a2, .LBB26_2
+; NOSFB-NEXT:  # %bb.1: # %entry
+; NOSFB-NEXT:    ori a1, a0, 890
+; NOSFB-NEXT:  .LBB26_2: # %entry
+; NOSFB-NEXT:    mv a0, a1
+; NOSFB-NEXT:    ret
+;
+; SFB-LABEL: select_ori:
+; SFB:       # %bb.0: # %entry
+; SFB-NEXT:    bnez a2, .LBB26_2
+; SFB-NEXT:  # %bb.1: # %entry
+; SFB-NEXT:    ori a1, a0, 890
+; SFB-NEXT:  .LBB26_2: # %entry
+; SFB-NEXT:    mv a0, a1
+; SFB-NEXT:    ret
+entry:
+ %0 = or i64 %A, 890
+ %1 = select i1 %cond, i64 %C, i64 %0
+ ret i64 %1
+}
+
+define i64 @select_xori(i64 %A, i64 %C, i1 zeroext %cond) {
+; NOSFB-LABEL: select_xori:
+; NOSFB:       # %bb.0: # %entry
+; NOSFB-NEXT:    bnez a2, .LBB27_2
+; NOSFB-NEXT:  # %bb.1: # %entry
+; NOSFB-NEXT:    xori a1, a0, 321
+; NOSFB-NEXT:  .LBB27_2: # %entry
+; NOSFB-NEXT:    mv a0, a1
+; NOSFB-NEXT:    ret
+;
+; SFB-LABEL: select_xori:
+; SFB:       # %bb.0: # %entry
+; SFB-NEXT:    bnez a2, .LBB27_2
+; SFB-NEXT:  # %bb.1: # %entry
+; SFB-NEXT:    xori a1, a0, 321
+; SFB-NEXT:  .LBB27_2: # %entry
+; SFB-NEXT:    mv a0, a1
+; SFB-NEXT:    ret
+entry:
+ %0 = xor i64 %A, 321
+ %1 = select i1 %cond, i64 %C, i64 %0
+ ret i64 %1
+}
+
+define i64 @select_slli(i64 %A, i64 %C, i1 zeroext %cond) {
+; NOSFB-LABEL: select_slli:
+; NOSFB:       # %bb.0: # %entry
+; NOSFB-NEXT:    bnez a2, .LBB28_2
+; NOSFB-NEXT:  # %bb.1: # %entry
+; NOSFB-NEXT:    slli a1, a0, 32
+; NOSFB-NEXT:  .LBB28_2: # %entry
+; NOSFB-NEXT:    mv a0, a1
+; NOSFB-NEXT:    ret
+;
+; SFB-LABEL: select_slli:
+; SFB:       # %bb.0: # %entry
+; SFB-NEXT:    bnez a2, .LBB28_2
+; SFB-NEXT:  # %bb.1: # %entry
+; SFB-NEXT:    slli a1, a0, 32
+; SFB-NEXT:  .LBB28_2: # %entry
+; SFB-NEXT:    mv a0, a1
+; SFB-NEXT:    ret
+entry:
+ %0 = shl i64 %A, 32
+ %1 = select i1 %cond, i64 %C, i64 %0
+ ret i64 %1
+}
+
+define i64 @select_srli(i64 %A, i64 %C, i1 zeroext %cond) {
+; NOSFB-LABEL: select_srli:
+; NOSFB:       # %bb.0: # %entry
+; NOSFB-NEXT:    bnez a2, .LBB29_2
+; NOSFB-NEXT:  # %bb.1: # %entry
+; NOSFB-NEXT:    srli a1, a0, 35
+; NOSFB-NEXT:  .LBB29_2: # %entry
+; NOSFB-NEXT:    mv a0, a1
+; NOSFB-NEXT:    ret
+;
+; SFB-LABEL: select_srli:
+; SFB:       # %bb.0: # %entry
+; SFB-NEXT:    bnez a2, .LBB29_2
+; SFB-NEXT:  # %bb.1: # %entry
+; SFB-NEXT:    srli a1, a0, 35
+; SFB-NEXT:  .LBB29_2: # %entry
+; SFB-NEXT:    mv a0, a1
+; SFB-NEXT:    ret
+entry:
+ %0 = lshr i64 %A, 35
+ %1 = select i1 %cond, i64 %C, i64 %0
+ ret i64 %1
+}
+
+define i64 @select_srai(i64 %A, i64 %C, i1 zeroext %cond) {
+; NOSFB-LABEL: select_srai:
+; NOSFB:       # %bb.0: # %entry
+; NOSFB-NEXT:    bnez a2, .LBB30_2
+; NOSFB-NEXT:  # %bb.1: # %entry
+; NOSFB-NEXT:    srai a1, a0, 63
+; NOSFB-NEXT:  .LBB30_2: # %entry
+; NOSFB-NEXT:    mv a0, a1
+; NOSFB-NEXT:    ret
+;
+; SFB-LABEL: select_srai:
+; SFB:       # %bb.0: # %entry
+; SFB-NEXT:    bnez a2, .LBB30_2
+; SFB-NEXT:  # %bb.1: # %entry
+; SFB-NEXT:    srai a1, a0, 63
+; SFB-NEXT:  .LBB30_2: # %entry
+; SFB-NEXT:    mv a0, a1
+; SFB-NEXT:    ret
+entry:
+ %0 = ashr i64 %A, 63
+ %1 = select i1 %cond, i64 %C, i64 %0
+ ret i64 %1
+}
+
+define i32 @select_slliw(i32 %A, i32 %C, i1 zeroext %cond) {
+; NOSFB-LABEL: select_slliw:
+; NOSFB:       # %bb.0: # %entry
+; NOSFB-NEXT:    bnez a2, .LBB31_2
+; NOSFB-NEXT:  # %bb.1: # %entry
+; NOSFB-NEXT:    slliw a1, a0, 3
+; NOSFB-NEXT:  .LBB31_2: # %entry
+; NOSFB-NEXT:    mv a0, a1
+; NOSFB-NEXT:    ret
+;
+; SFB-LABEL: select_slliw:
+; SFB:       # %bb.0: # %entry
+; SFB-NEXT:    bnez a2, .LBB31_2
+; SFB-NEXT:  # %bb.1: # %entry
+; SFB-NEXT:    slliw a1, a0, 3
+; SFB-NEXT:  .LBB31_2: # %entry
+; SFB-NEXT:    mv a0, a1
+; SFB-NEXT:    ret
+entry:
+ %0 = shl i32 %A, 3
+ %1 = select i1 %cond, i32 %C, i32 %0
+ ret i32 %1
+}
+
+define i32 @select_srliw(i32 %A, i32 %C, i1 zeroext %cond) {
+; NOSFB-LABEL: select_srliw:
+; NOSFB:       # %bb.0: # %entry
+; NOSFB-NEXT:    bnez a2, .LBB32_2
+; NOSFB-NEXT:  # %bb.1: # %entry
+; NOSFB-NEXT:    srliw a1, a0, 17
+; NOSFB-NEXT:  .LBB32_2: # %entry
+; NOSFB-NEXT:    mv a0, a1
+; NOSFB-NEXT:    ret
+;
+; SFB-LABEL: select_srliw:
+; SFB:       # %bb.0: # %entry
+; SFB-NEXT:    bnez a2, .LBB32_2
+; SFB-NEXT:  # %bb.1: # %entry
+; SFB-NEXT:    srliw a1, a0, 17
+; SFB-NEXT:  .LBB32_2: # %entry
+; SFB-NEXT:    mv a0, a1
+; SFB-NEXT:    ret
+entry:
+ %0 = lshr i32 %A, 17
+ %1 = select i1 %cond, i32 %C, i32 %0
+ ret i32 %1
+}
+
+define i32 @select_sraiw(i32 %A, i32 %C, i1 zeroext %cond) {
+; NOSFB-LABEL: select_sraiw:
+; NOSFB:       # %bb.0: # %entry
+; NOSFB-NEXT:    bnez a2, .LBB33_2
+; NOSFB-NEXT:  # %bb.1: # %entry
+; NOSFB-NEXT:    sraiw a1, a0, 31
+; NOSFB-NEXT:  .LBB33_2: # %entry
+; NOSFB-NEXT:    mv a0, a1
+; NOSFB-NEXT:    ret
+;
+; SFB-LABEL: select_sraiw:
+; SFB:       # %bb.0: # %entry
+; SFB-NEXT:    bnez a2, .LBB33_2
+; SFB-NEXT:  # %bb.1: # %entry
+; SFB-NEXT:    sraiw a1, a0, 31
+; SFB-NEXT:  .LBB33_2: # %entry
+; SFB-NEXT:    mv a0, a1
+; SFB-NEXT:    ret
+entry:
+ %0 = ashr i32 %A, 31
+ %1 = select i1 %cond, i32 %C, i32 %0
  ret i32 %1
 }

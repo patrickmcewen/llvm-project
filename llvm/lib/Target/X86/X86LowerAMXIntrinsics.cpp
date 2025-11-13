@@ -441,7 +441,7 @@ X86LowerAMXIntrinsics::createTileDPLoops(BasicBlock *Start, BasicBlock *End,
     Value *SubVecB = B.CreateBitCast(EltB, V2I16Ty);
     Value *ZeroV2I16 = Constant::getNullValue(V2I16Ty);
     int ShuffleMask[4] = {2, 0, 3, 1};
-    auto ShuffleArray = makeArrayRef(ShuffleMask);
+    auto ShuffleArray = ArrayRef(ShuffleMask);
     Value *AV2F32 = B.CreateBitCast(
         B.CreateShuffleVector(SubVecA, ZeroV2I16, ShuffleArray), V2F32Ty);
     Value *BV2F32 = B.CreateBitCast(
@@ -495,7 +495,7 @@ X86LowerAMXIntrinsics::lowerTileDP(Instruction *TileDP) {
                                             KDWord, C, A, B);
   // we cannot assume there always be bitcast after tiledpbssd. So we need to
   // insert one bitcast as required
-  Builder.SetInsertPoint(End->getFirstNonPHI());
+  Builder.SetInsertPoint(End, End->getFirstNonPHIIt());
   Value *ResAMX =
       Builder.CreateBitCast(ResVec, Type::getX86_AMXTy(Builder.getContext()));
   // Delete TileDP intrinsic and do some clean-up.
@@ -539,7 +539,7 @@ bool X86LowerAMXIntrinsics::lowerTileLoadStore(Instruction *TileLoadStore) {
   if (IsTileLoad) {
     // we cannot assume there always be bitcast after tileload. So we need to
     // insert one bitcast as required
-    Builder.SetInsertPoint(End->getFirstNonPHI());
+    Builder.SetInsertPoint(End, End->getFirstNonPHIIt());
     Value *ResAMX =
         Builder.CreateBitCast(ResVec, Type::getX86_AMXTy(Builder.getContext()));
     // Delete tileloadd6 intrinsic and do some clean-up
@@ -646,7 +646,7 @@ public:
       return false;
     TargetMachine *TM = &getAnalysis<TargetPassConfig>().getTM<TargetMachine>();
     if (!F.hasFnAttribute(Attribute::OptimizeNone) &&
-        TM->getOptLevel() != CodeGenOpt::None)
+        TM->getOptLevel() != CodeGenOptLevel::None)
       return false;
 
     auto *DTWP = getAnalysisIfAvailable<DominatorTreeWrapperPass>();

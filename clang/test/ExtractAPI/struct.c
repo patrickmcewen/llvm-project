@@ -52,22 +52,26 @@ struct Color {
     {
       "kind": "memberOf",
       "source": "c:@S@Color@FI@Red",
-      "target": "c:@S@Color"
+      "target": "c:@S@Color",
+      "targetFallback": "Color"
     },
     {
       "kind": "memberOf",
       "source": "c:@S@Color@FI@Green",
-      "target": "c:@S@Color"
+      "target": "c:@S@Color",
+      "targetFallback": "Color"
     },
     {
       "kind": "memberOf",
       "source": "c:@S@Color@FI@Blue",
-      "target": "c:@S@Color"
+      "target": "c:@S@Color",
+      "targetFallback": "Color"
     },
     {
       "kind": "memberOf",
       "source": "c:@S@Color@FI@Alpha",
-      "target": "c:@S@Color"
+      "target": "c:@S@Color",
+      "targetFallback": "Color"
     }
   ],
   "symbols": [
@@ -85,6 +89,10 @@ struct Color {
         {
           "kind": "identifier",
           "spelling": "Color"
+        },
+        {
+          "kind": "text",
+          "spelling": ";"
         }
       ],
       "docComment": {
@@ -153,6 +161,10 @@ struct Color {
         {
           "kind": "identifier",
           "spelling": "Red"
+        },
+        {
+          "kind": "text",
+          "spelling": ";"
         }
       ],
       "identifier": {
@@ -205,6 +217,10 @@ struct Color {
         {
           "kind": "identifier",
           "spelling": "Green"
+        },
+        {
+          "kind": "text",
+          "spelling": ";"
         }
       ],
       "identifier": {
@@ -257,6 +273,10 @@ struct Color {
         {
           "kind": "identifier",
           "spelling": "Blue"
+        },
+        {
+          "kind": "text",
+          "spelling": ";"
         }
       ],
       "identifier": {
@@ -309,6 +329,10 @@ struct Color {
         {
           "kind": "identifier",
           "spelling": "Alpha"
+        },
+        {
+          "kind": "text",
+          "spelling": ";"
         }
       ],
       "docComment": {

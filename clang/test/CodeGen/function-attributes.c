@@ -62,7 +62,7 @@ void f13(void) __attribute__((pure)) __attribute__((const));
 void f13(void){}
 
 
-// <rdar://problem/7102668> [irgen] clang isn't setting the optsize bit on functions
+// [irgen] clang isn't setting the optsize bit on functions
 // CHECK-LABEL: define{{.*}} void @f15
 // CHECK: [[NUW]]
 // CHECK: {
@@ -111,9 +111,9 @@ void f20(void) {
 
 // CHECK: attributes [[NUW]] = { nounwind optsize{{.*}} }
 // CHECK: attributes [[AI]] = { alwaysinline nounwind optsize{{.*}} }
-// CHECK: attributes [[NUW_OS_RN]] = { nounwind optsize readnone{{.*}} }
+// CHECK: attributes [[NUW_OS_RN]] = { nounwind optsize willreturn memory(none){{.*}} }
 // CHECK: attributes [[SR]] = { nounwind optsize{{.*}} "stackrealign"{{.*}} }
 // CHECK: attributes [[RT]] = { nounwind optsize returns_twice{{.*}} }
 // CHECK: attributes [[NR]] = { noreturn optsize }
-// CHECK: attributes [[NUW_RN]] = { nounwind optsize readnone willreturn }
+// CHECK: attributes [[NUW_RN]] = { nounwind optsize willreturn memory(none) }
 // CHECK: attributes [[RT_CALL]] = { optsize returns_twice }

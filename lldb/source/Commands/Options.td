@@ -343,6 +343,11 @@ let Command = "disassemble" in {
     Desc<"Force disassembly of large functions.">;
 }
 
+let Command = "diagnostics dump" in {
+  def diagnostics_dump_directory : Option<"directory", "d">, Group<1>,
+    Arg<"Path">, Desc<"Dump the diagnostics to the given directory.">;
+}
+
 let Command = "expression" in {
   def expression_options_all_threads : Option<"all-threads", "a">,
     Groups<[1,2]>, Arg<"Boolean">, Desc<"Should we run all threads if the "
@@ -366,7 +371,7 @@ let Command = "expression" in {
     Arg<"Language">, Desc<"Specifies the Language to use when parsing the "
     "expression.  If not set the target.language setting is used.">;
   def expression_options_apply_fixits : Option<"apply-fixits", "X">,
-    Groups<[1,2]>, Arg<"Language">, Desc<"If true, simple fix-it hints will be "
+    Groups<[1,2]>, Arg<"Boolean">, Desc<"If true, simple fix-it hints will be "
     "automatically applied to the expression.">;
   def expression_options_description_verbosity :
     Option<"description-verbosity", "v">, Group<1>,
@@ -381,6 +386,11 @@ let Command = "expression" in {
     Arg<"Boolean">,
     Desc<"Controls whether the expression can fall back to being JITted if it's "
     "not supported by the interpreter (defaults to true).">;
+  def persistent_result : Option<"persistent-result", "\\x01">, Groups<[1,2]>,
+    Arg<"Boolean">,
+    Desc<"Persist expression result in a variable for subsequent use. "
+    "Expression results will be labeled with $-prefixed variables, e.g. $0, "
+    "$1, etc. Defaults to true.">;
 }
 
 let Command = "frame diag" in {
@@ -794,6 +804,9 @@ let Command = "script add" in {
     EnumArg<"ScriptedCommandSynchronicity">,
     Desc<"Set the synchronicity of this command's executions with regard to "
     "LLDB event system.">;
+  def completion_type : Option<"completion-type", "C">,
+  EnumArg<"CompletionType">,
+  Desc<"Specify which completion type the command should use - if none is specified, the command won't use auto-completion.">;
 }
 
 let Command = "container add" in {
@@ -1184,6 +1197,11 @@ let Command = "type summary add" in {
     Desc<"Don't use this format for references-to-type objects.">;
   def type_summary_add_regex : Option<"regex", "x">,
     Desc<"Type names are actually regular expressions.">;
+  def type_summary_add_recognizer_function :
+    Option<"recognizer-function", "\\x01">,
+    Desc<"The names in the argument list are actually the names of python "
+    "functions that decide whether to use this summary for any given type. "
+    "Cannot be specified at the same time as --regex (-x).">;
   def type_summary_add_inline_children : Option<"inline-children", "c">,
     Group<1>, Required,
     Desc<"If true, inline all child values into summary string.">;
@@ -1225,6 +1243,11 @@ let Command = "type synth add" in {
     "children.">;
   def type_synth_add_regex : Option<"regex", "x">,
     Desc<"Type names are actually regular expressions.">;
+  def type_synth_add_recognizer_function :
+    Option<"recognizer-function", "\\x01">,
+    Desc<"The names in the argument list are actually the names of python "
+    "functions that decide whether to use this summary for any given type. "
+    "Cannot be specified at the same time as --regex (-x).">;
 }
 
 let Command = "type format add" in {

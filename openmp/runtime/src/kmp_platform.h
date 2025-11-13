@@ -93,6 +93,7 @@
 #define KMP_ARCH_MIPS64 0
 #define KMP_ARCH_RISCV64 0
 #define KMP_ARCH_LOONGARCH64 0
+#define KMP_ARCH_VE 0
 
 #if KMP_OS_WINDOWS
 #if defined(_M_AMD64) || defined(__x86_64)
@@ -101,6 +102,9 @@
 #elif defined(__aarch64__) || defined(_M_ARM64)
 #undef KMP_ARCH_AARCH64
 #define KMP_ARCH_AARCH64 1
+#elif defined(__arm__) || defined(_M_ARM)
+#undef KMP_ARCH_ARMV7
+#define KMP_ARCH_ARMV7 1
 #else
 #undef KMP_ARCH_X86
 #define KMP_ARCH_X86 1
@@ -139,6 +143,9 @@
 #elif defined __loongarch__ && __loongarch_grlen == 64
 #undef KMP_ARCH_LOONGARCH64
 #define KMP_ARCH_LOONGARCH64 1
+#elif defined __ve__
+#undef KMP_ARCH_VE
+#define KMP_ARCH_VE 1
 #endif
 #endif
 
@@ -203,7 +210,7 @@
 // TODO: Fixme - This is clever, but really fugly
 #if (1 != KMP_ARCH_X86 + KMP_ARCH_X86_64 + KMP_ARCH_ARM + KMP_ARCH_PPC64 +     \
               KMP_ARCH_AARCH64 + KMP_ARCH_MIPS + KMP_ARCH_MIPS64 +             \
-              KMP_ARCH_RISCV64 + KMP_ARCH_LOONGARCH64)
+              KMP_ARCH_RISCV64 + KMP_ARCH_LOONGARCH64 + KMP_ARCH_VE)
 #error Unknown or unsupported architecture
 #endif
 

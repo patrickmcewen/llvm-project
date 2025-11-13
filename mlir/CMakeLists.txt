@@ -1,4 +1,11 @@
 # MLIR project.
+cmake_minimum_required(VERSION 3.20.0)
+
+if(NOT DEFINED LLVM_COMMON_CMAKE_UTILS)
+  set(LLVM_COMMON_CMAKE_UTILS ${CMAKE_CURRENT_SOURCE_DIR}/../cmake)
+endif()
+include(${LLVM_COMMON_CMAKE_UTILS}/Modules/CMakePolicy.cmake
+  NO_POLICY_SCOPE)
 
 # Check if MLIR is built as a standalone project.
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
@@ -8,10 +15,9 @@ endif()
 
 # Must go below project(..)
 include(GNUInstallDirs)
+set(CMAKE_CXX_STANDARD 17)
 
 if(MLIR_STANDALONE_BUILD)
-  cmake_minimum_required(VERSION 3.13.4)
-
   find_package(LLVM CONFIG REQUIRED)
   set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${LLVM_CMAKE_DIR})
   include(HandleLLVMOptions)
@@ -20,11 +26,9 @@ if(MLIR_STANDALONE_BUILD)
 
   include_directories(${LLVM_INCLUDE_DIRS})
 
-  set(LLVM_MAIN_SRC_DIR ${CMAKE_SOURCE_DIR}/../llvm CACHE PATH
-      "Path to LLVM source tree")
-  set(UNITTEST_DIR ${LLVM_MAIN_SRC_DIR}/utils/unittest)
+  set(UNITTEST_DIR ${LLVM_THIRD_PARTY_DIR}/unittest)
   if(EXISTS ${UNITTEST_DIR}/googletest/include/gtest/gtest.h)
-    add_subdirectory(${UNITTEST_DIR} utils/unittest)
+    add_subdirectory(${UNITTEST_DIR} third-party/unittest)
   endif()
 
   set(CMAKE_LIBRARY_OUTPUT_DIRECTORY
@@ -45,10 +49,6 @@ set(MLIR_SOURCE_DIR  ${CMAKE_CURRENT_SOURCE_DIR})
 set(MLIR_BINARY_DIR  ${CMAKE_CURRENT_BINARY_DIR})
 set(MLIR_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/include)
 set(MLIR_TOOLS_DIR   ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
-
-if(NOT DEFINED LLVM_COMMON_CMAKE_UTILS)
-  set(LLVM_COMMON_CMAKE_UTILS ${CMAKE_CURRENT_SOURCE_DIR}/../cmake)
-endif()
 
 # Make sure that our source directory is on the current cmake module path so
 # that we can include cmake files from this directory.
@@ -97,7 +97,7 @@ endif()
 
 # Build the CUDA conversions and run according tests if the NVPTX backend
 # is available
-if ("NVPTX" IN_LIST LLVM_TARGETS_TO_BUILD AND MLIR_ENABLE_EXECUTION_ENGINE)
+if ("NVPTX" IN_LIST LLVM_TARGETS_TO_BUILD)
   set(MLIR_ENABLE_CUDA_CONVERSIONS 1)
 else()
   set(MLIR_ENABLE_CUDA_CONVERSIONS 0)
@@ -107,17 +107,21 @@ add_definitions(-DMLIR_CUDA_CONVERSIONS_ENABLED=${MLIR_ENABLE_CUDA_CONVERSIONS})
 
 # Build the ROCm conversions and run according tests if the AMDGPU backend
 # is available.
-if ("AMDGPU" IN_LIST LLVM_TARGETS_TO_BUILD AND MLIR_ENABLE_EXECUTION_ENGINE)
+if ("AMDGPU" IN_LIST LLVM_TARGETS_TO_BUILD)
   set(MLIR_ENABLE_ROCM_CONVERSIONS 1)
 else()
   set(MLIR_ENABLE_ROCM_CONVERSIONS 0)
 endif()
 add_definitions(-DMLIR_ROCM_CONVERSIONS_ENABLED=${MLIR_ENABLE_ROCM_CONVERSIONS})
 
+set(MLIR_ENABLE_DEPRECATED_GPU_SERIALIZATION 0 CACHE BOOL "Enable deprecated GPU serialization passes")
 set(MLIR_ENABLE_CUDA_RUNNER 0 CACHE BOOL "Enable building the mlir CUDA runner")
 set(MLIR_ENABLE_ROCM_RUNNER 0 CACHE BOOL "Enable building the mlir ROCm runner")
 set(MLIR_ENABLE_SPIRV_CPU_RUNNER 0 CACHE BOOL "Enable building the mlir SPIR-V cpu runner")
 set(MLIR_ENABLE_VULKAN_RUNNER 0 CACHE BOOL "Enable building the mlir Vulkan runner")
+set(MLIR_ENABLE_NVPTXCOMPILER 0 CACHE BOOL
+    "Statically link the nvptxlibrary instead of calling ptxas as a subprocess \
+    for compiling PTX to cubin")
 
 option(MLIR_INCLUDE_TESTS
        "Generate build targets for the MLIR unit tests."
@@ -133,6 +137,10 @@ set(MLIR_INSTALL_AGGREGATE_OBJECTS 1 CACHE BOOL
     under lib/objects-{CMAKE_BUILD_TYPE}.")
 
 set(MLIR_BUILD_MLIR_C_DYLIB 0 CACHE BOOL "Builds libMLIR-C shared library.")
+
+configure_file(
+  ${MLIR_MAIN_INCLUDE_DIR}/mlir/Config/mlir-config.h.cmake
+  ${MLIR_INCLUDE_DIR}/mlir/Config/mlir-config.h)
 
 #-------------------------------------------------------------------------------
 # Python Bindings Configuration
@@ -177,7 +185,7 @@ add_subdirectory(lib/CAPI)
 if (MLIR_INCLUDE_TESTS)
   add_definitions(-DMLIR_INCLUDE_TESTS)
   add_custom_target(MLIRUnitTests)
-  if (EXISTS ${LLVM_MAIN_SRC_DIR}/utils/unittest/googletest/include/gtest/gtest.h)
+  if (EXISTS ${LLVM_THIRD_PARTY_DIR}/unittest/googletest/include/gtest/gtest.h)
     add_subdirectory(unittests)
   else()
     message(WARNING "gtest not found, unittests will not be available")
