@@ -439,7 +439,7 @@ static bool isValidAffineIndexOperand(Value value, Region *region) {
 }
 
 /// Prints dimension and symbol list.
-static void printDimAndSymbolList(Operation::operand_iterator begin,
+void mlir::affine::printDimAndSymbolList(Operation::operand_iterator begin,
                                   Operation::operand_iterator end,
                                   unsigned numDims, OpAsmPrinter &printer) {
   OperandRange operands(begin, end);
@@ -3022,7 +3022,7 @@ void AffineIfOp::build(OpBuilder &builder, OperationState &result,
 /// Compose any affine.apply ops feeding into `operands` of the integer set
 /// `set` by composing the maps of such affine.apply ops with the integer
 /// set constraints.
-static void composeSetAndOperands(IntegerSet &set,
+void mlir::affine::composeSetAndOperands(IntegerSet &set,
                                   SmallVectorImpl<Value> &operands) {
   // We will simply reuse the API of the map composition by viewing the LHSs of
   // the equalities and inequalities of `set` as the affine exprs of an affine

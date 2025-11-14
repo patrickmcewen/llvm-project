@@ -366,6 +366,11 @@ ParseResult parseDimAndSymbolList(OpAsmParser &parser,
                                   SmallVectorImpl<Value> &operands,
                                   unsigned &numDims);
 
+/// Prints dimension and symbol list.
+void printDimAndSymbolList(Operation::operand_iterator begin,
+                          Operation::operand_iterator end, unsigned numDims,
+                          OpAsmPrinter &printer);
+
 /// Modifies both `map` and `operands` in-place so as to:
 /// 1. drop duplicate operands
 /// 2. drop unused dims and symbols from map
@@ -489,6 +494,11 @@ void buildAffineLoopNest(OpBuilder &builder, Location loc, ValueRange lbs,
                          ValueRange ubs, ArrayRef<int64_t> steps,
                          function_ref<void(OpBuilder &, Location, ValueRange)>
                              bodyBuilderFn = nullptr);
+
+/// Compose any affine.apply ops feeding into `operands` of the integer set
+/// `set` by composing the maps of such affine.apply ops with the integer
+/// set constraints.
+void composeSetAndOperands(IntegerSet &set, SmallVectorImpl<Value> &operands);
 
 /// AffineBound represents a lower or upper bound in the for operation.
 /// This class does not own the underlying operands. Instead, it refers
